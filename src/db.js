@@ -2,13 +2,45 @@ const fs = require('fs');
 const path = require('path');
 const { Pool } = require('pg');
 
-const connectionString = process.env.DATABASE_URL;
+function buildConnectionStringFromPgVars() {
+  const host = process.env.PGHOST;
+  const port = process.env.PGPORT || '5432';
+  const user = process.env.PGUSER;
+  const password = process.env.PGPASSWORD || '';
+  const database = process.env.PGDATABASE;
 
-if (!connectionString) {
-  console.warn('DATABASE_URL não configurada. Configure o PostgreSQL antes de iniciar em produção.');
+  if (!host || !user || !database) return null;
+
+  const auth = `${encodeURIComponent(user)}:${encodeURIComponent(password)}`;
+  return `postgresql://${auth}@${host}:${port}/${encodeURIComponent(database)}`;
 }
 
-const shouldUseSsl = process.env.PGSSLMODE === 'require' || /sslmode=require/i.test(connectionString || '');
+function resolveConnectionString() {
+  return (
+    process.env.DATABASE_URL ||
+    process.env.POSTGRES_URL ||
+    process.env.POSTGRES_DATABASE_URL ||
+    process.env.DATABASE_PRIVATE_URL ||
+    process.env.DATABASE_PUBLIC_URL ||
+    buildConnectionStringFromPgVars()
+  );
+}
+
+const connectionString = resolveConnectionString();
+
+if (!connectionString) {
+  throw new Error([
+    'Banco PostgreSQL não configurado.',
+    'No Railway, adicione um serviço PostgreSQL e depois crie no serviço do app a variável:',
+    'DATABASE_URL=${{Postgres.DATABASE_URL}}',
+    'Se o seu banco tiver outro nome no canvas do Railway, troque "Postgres" pelo nome exato do serviço.',
+    'Depois de salvar a variável, faça Redeploy.'
+  ].join('\n'));
+}
+
+const shouldUseSsl =
+  ['require', 'true', '1', 'no-verify'].includes(String(process.env.PGSSLMODE || '').toLowerCase()) ||
+  /sslmode=(require|no-verify)/i.test(connectionString);
 
 const pool = new Pool({
   connectionString,

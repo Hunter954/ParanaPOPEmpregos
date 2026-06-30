@@ -4,23 +4,40 @@
     <h1>Conectar WhatsApp</h1>
     <p>Abra o WhatsApp comercial, vá em aparelhos conectados e leia o QR Code.</p>
   </div>
-  <form method="post" action="/admin/bot/start">
-    <button class="primary">Gerar/Iniciar</button>
-  </form>
+  <div class="actions">
+    <form method="post" action="/admin/bot/start">
+      <button class="primary">Gerar/Iniciar</button>
+    </form>
+    <form method="post" action="/admin/bot/restart-clean" onsubmit="return confirm('Isso limpa a sessão local e gera um novo QR. Continuar?')">
+      <button>Limpar sessão e tentar de novo</button>
+    </form>
+  </div>
 </header>
 
 <section class="panel centered">
   <div class="status <%= bot.ready ? 'ok' : 'warn' %>"><%= bot.status %></div>
+  <p>Tentativas de inicialização: <strong><%= bot.launchAttempts || 0 %></strong></p>
+
   <% if (bot.qr) { %>
     <img class="qr" src="<%= bot.qr %>" alt="QR Code WhatsApp">
-    <p>Esta tela pode ser atualizada até o QR aparecer. Após conectar, o QR some automaticamente.</p>
+    <p>Depois de ler o QR, mantenha o celular conectado por alguns minutos para salvar a sessão.</p>
   <% } else if (bot.ready) { %>
     <h2>✅ WhatsApp conectado</h2>
     <p>O bot já está pronto para receber mensagens.</p>
+  <% } else if (bot.starting) { %>
+    <h2>Inicializando WhatsApp Web</h2>
+    <p>Atualize esta página em alguns segundos. O QR aparece aqui assim que o OpenWA liberar.</p>
   <% } else { %>
     <h2>QR ainda não disponível</h2>
-    <p>Clique em “Gerar/Iniciar” ou atualize a página em alguns segundos.</p>
+    <p>Clique em “Gerar/Iniciar”. Se aparecer timeout, clique em “Limpar sessão e tentar de novo”.</p>
   <% } %>
-  <% if (bot.lastError) { %><pre class="error"><%= bot.lastError %></pre><% } %>
+
+  <% if (bot.lastError) { %>
+    <pre class="error"><%= bot.lastError %></pre>
+    <p class="muted">Dica: esse erro geralmente vem do Chromium/OpenWA carregando o WhatsApp Web. O painel continua online mesmo que o bot precise tentar novamente.</p>
+  <% } %>
 </section>
+<script>
+  setTimeout(() => window.location.reload(), 8000);
+</script>
 <%- include('../partials/admin-footer') %>

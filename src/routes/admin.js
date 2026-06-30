@@ -1,5 +1,5 @@
 const express = require('express');
-const { getBotState, startBot, sendText } = require('../bot');
+const { getBotState, startBotInBackground, stopBot, cleanSessionArtifacts, sendText } = require('../bot');
 const {
   getDashboardStats,
   query,
@@ -56,8 +56,15 @@ router.get('/', requireAuth, async (req, res, next) => {
 });
 
 router.post('/bot/start', requireAuth, async (req, res) => {
-  await startBot();
-  res.redirect('/admin');
+  startBotInBackground();
+  res.redirect('/admin/qr');
+});
+
+router.post('/bot/restart-clean', requireAuth, async (req, res) => {
+  await stopBot();
+  await cleanSessionArtifacts();
+  startBotInBackground({ cleanSession: true });
+  res.redirect('/admin/qr');
 });
 
 router.get('/qr', requireAuth, (req, res) => {

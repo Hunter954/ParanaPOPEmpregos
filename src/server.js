@@ -5,7 +5,7 @@ const PgSession = require('connect-pg-simple')(session);
 const helmet = require('helmet');
 const path = require('path');
 const { pool, runMigrations } = require('./db');
-const { startBot } = require('./bot');
+const { startBotInBackground } = require('./bot');
 
 const adminRoutes = require('./routes/admin');
 const publicRoutes = require('./routes/public');
@@ -71,8 +71,12 @@ async function bootstrap() {
     console.log(`ParanáPOP Empregos rodando na porta ${port}`);
   });
 
-  // Inicia sem bloquear o painel. Se der erro, o QR/status aparece no admin.
-  startBot().catch((error) => console.error('Falha ao iniciar bot:', error));
+  if (String(process.env.WA_START_ON_BOOT || 'false') === 'true') {
+    // Inicia sem bloquear o painel. Em produção, é melhor deixar false e iniciar pelo /admin/qr.
+    startBotInBackground();
+  } else {
+    console.log('OpenWA aguardando início manual em /admin/qr. Defina WA_START_ON_BOOT=true para iniciar no boot.');
+  }
 }
 
 bootstrap().catch((error) => {

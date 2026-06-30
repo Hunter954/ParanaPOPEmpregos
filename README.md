@@ -19,7 +19,7 @@ Projeto completo para um bot de WhatsApp comercial usando **OpenWA**, **Node.js/
 - Painel `/admin` com:
   - login;
   - status do WhatsApp;
-  - QR Code;
+  - QR Code com início manual do OpenWA;
   - usuários;
   - vagas;
   - candidaturas;
@@ -52,11 +52,15 @@ paranapop-empregos-bot/
 
 ## Como subir no Railway
 
+
+> Importante no Railway: depois de criar o PostgreSQL, a variável do banco precisa estar no **serviço do app**. Se aparecer erro `ECONNREFUSED 127.0.0.1:5432` ou `Banco PostgreSQL não configurado`, veja o arquivo `RAILWAY_DEPLOY.md`.
+
+
 1. Suba este projeto para um repositório GitHub.
 2. No Railway, crie um novo projeto apontando para o repositório.
 3. Adicione um serviço PostgreSQL no Railway.
-4. Confirme que a variável `DATABASE_URL` foi criada automaticamente.
-5. Configure as variáveis abaixo no Railway:
+4. No serviço do app, vá em **Variables** e adicione a referência `DATABASE_URL=${{Postgres.DATABASE_URL}}`.
+5. Configure as demais variáveis abaixo no Railway. O recomendado é deixar `WA_START_ON_BOOT=false`, assim o deploy sobe primeiro e o WhatsApp é iniciado depois pelo painel `/admin/qr`:
 
 ```env
 NODE_ENV=production
@@ -68,7 +72,14 @@ ADMIN_PASSWORD=uma-senha-forte
 RUN_MIGRATIONS=true
 ENABLE_WHATSAPP=true
 WA_SESSION_ID=paranapop-empregos
+WA_START_ON_BOOT=false
+WA_DEBUG_WAIT_TIMEOUT_MS=120000
+WA_BROWSER_TIMEOUT_MS=120000
+WA_PROTOCOL_TIMEOUT_MS=120000
+WA_MAX_LAUNCH_ATTEMPTS=2
+WA_RETRY_CLEAN_SESSION=true
 CHROME_PATH=/usr/bin/chromium
+PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 CANDIDATE_TRIAL_DAYS=60
 CANDIDATE_PREMIUM_PRICE_BRL=9.90
 CANDIDATE_PREMIUM_DAYS=90
@@ -81,7 +92,21 @@ BROADCAST_DELAY_MS=700
 6. Faça deploy.
 7. Acesse `https://seu-projeto.up.railway.app/admin`.
 8. Faça login com `ADMIN_USER` e `ADMIN_PASSWORD`.
-9. Vá em **QR Code** e leia com o WhatsApp comercial.
+9. Vá em **QR Code**, clique em **Gerar/Iniciar** e leia com o WhatsApp comercial.
+10. Se o OpenWA mostrar `Waiting failed: 30000ms exceeded`, clique em **Limpar sessão e tentar de novo**. O painel permanece online.
+
+
+## Correção para OpenWA no Railway
+
+O projeto inclui um `postinstall` que aplica um patch no OpenWA 4.76.0 para aumentar o timeout interno que costuma estourar em `Waiting failed: 30000ms exceeded`. Também foi alterado para o OpenWA não iniciar automaticamente no deploy.
+
+Fluxo recomendado:
+
+1. Suba o app e confirme que `/admin` abre.
+2. Entre no painel.
+3. Acesse **QR Code**.
+4. Clique em **Gerar/Iniciar**.
+5. Aguarde o QR aparecer e leia com o WhatsApp comercial.
 
 ## Rodando localmente
 
