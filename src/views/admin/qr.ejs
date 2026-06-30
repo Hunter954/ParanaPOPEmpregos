@@ -11,11 +11,15 @@
     <form method="post" action="/admin/bot/restart-clean" onsubmit="return confirm('Isso limpa a sessão local e gera um novo QR. Continuar?')">
       <button>Limpar sessão e tentar de novo</button>
     </form>
+    <form method="post" action="/admin/bot/stop">
+      <button>Parar</button>
+    </form>
   </div>
 </header>
 
 <section class="panel centered">
   <div class="status <%= bot.ready ? 'ok' : 'warn' %>"><%= bot.status %></div>
+  <p>Motor atual: <strong><%= bot.engine === 'openwa' ? 'OpenWA' : 'Baileys' %></strong></p>
   <p>Tentativas de inicialização: <strong><%= bot.launchAttempts || 0 %></strong></p>
 
   <% if (bot.qr) { %>
@@ -25,8 +29,8 @@
     <h2>✅ WhatsApp conectado</h2>
     <p>O bot já está pronto para receber mensagens.</p>
   <% } else if (bot.starting) { %>
-    <h2>Inicializando WhatsApp Web</h2>
-    <p>Atualize esta página em alguns segundos. O QR aparece aqui assim que o OpenWA liberar.</p>
+    <h2>Inicializando WhatsApp</h2>
+    <p>Atualize esta página em alguns segundos. O QR aparece aqui assim que o WhatsApp liberar.</p>
   <% } else { %>
     <h2>QR ainda não disponível</h2>
     <p>Clique em “Gerar/Iniciar”. Se aparecer timeout, clique em “Limpar sessão e tentar de novo”.</p>
@@ -34,7 +38,7 @@
 
   <% if (bot.lastError) { %>
     <pre class="error"><%= bot.lastError %></pre>
-    <p class="muted">Dica: esse erro geralmente vem do Chromium/OpenWA carregando o WhatsApp Web. O painel continua online mesmo que o bot precise tentar novamente.</p>
+    <p class="muted">Dica: se estiver usando OpenWA e aparecer timeout 30000ms, troque a variável <strong>WHATSAPP_ENGINE</strong> para <strong>baileys</strong> e faça redeploy.</p>
   <% } %>
 </section>
 <script>

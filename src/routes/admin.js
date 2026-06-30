@@ -67,6 +67,11 @@ router.post('/bot/restart-clean', requireAuth, async (req, res) => {
   res.redirect('/admin/qr');
 });
 
+router.post('/bot/stop', requireAuth, async (req, res) => {
+  await stopBot();
+  res.redirect('/admin/qr');
+});
+
 router.get('/qr', requireAuth, (req, res) => {
   const bot = getBotState();
   res.render('admin/qr', { bot });

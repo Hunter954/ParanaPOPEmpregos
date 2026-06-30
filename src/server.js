@@ -71,11 +71,14 @@ async function bootstrap() {
     console.log(`ParanáPOP Empregos rodando na porta ${port}`);
   });
 
-  if (String(process.env.WA_START_ON_BOOT || 'false') === 'true') {
-    // Inicia sem bloquear o painel. Em produção, é melhor deixar false e iniciar pelo /admin/qr.
+  const startOnBoot = String(process.env.WA_START_ON_BOOT || 'false') === 'true' &&
+    String(process.env.WA_ALLOW_BOOT_START || 'false') === 'true';
+
+  if (startOnBoot) {
+    // Inicia sem bloquear o painel. Em produção, é melhor iniciar pelo /admin/qr.
     startBotInBackground();
   } else {
-    console.log('OpenWA aguardando início manual em /admin/qr. Defina WA_START_ON_BOOT=true para iniciar no boot.');
+    console.log('WhatsApp aguardando início manual em /admin/qr. Para iniciar no boot, defina WA_START_ON_BOOT=true e WA_ALLOW_BOOT_START=true.');
   }
 }
 
