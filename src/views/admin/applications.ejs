@@ -1,0 +1,25 @@
+<%- include('../partials/admin-header') %>
+<header class="page-header">
+  <div>
+    <h1>Candidaturas</h1>
+    <p>Candidatos que demonstraram interesse pelo bot.</p>
+  </div>
+</header>
+
+<section class="panel">
+  <table>
+    <thead><tr><th>Data</th><th>Vaga</th><th>Empresa</th><th>Candidato</th><th>Experiência</th></tr></thead>
+    <tbody>
+      <% applications.forEach(app => { %>
+        <tr>
+          <td><%= new Date(app.created_at).toLocaleString('pt-BR') %></td>
+          <td>#<%= app.job_id %> — <%= app.job_title %></td>
+          <td><%= app.company_name || '-' %></td>
+          <td><strong><%= app.candidate_name || '-' %></strong><br><small><%= app.phone || '-' %> • <%= app.city || '-' %></small></td>
+          <td><%= app.experience || '-' %></td>
+        </tr>
+      <% }) %>
+    </tbody>
+  </table>
+</section>
+<%- include('../partials/admin-footer') %>

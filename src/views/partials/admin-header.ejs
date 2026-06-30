@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ParanáPOP Empregos Admin</title>
+  <link rel="stylesheet" href="/public/admin.css">
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="brand">
+      <strong>ParanáPOP</strong>
+      <span>Empregos</span>
+    </div>
+    <nav>
+      <a href="/admin" class="<%= currentPath === '/admin' ? 'active' : '' %>">Dashboard</a>
+      <a href="/admin/qr" class="<%= currentPath === '/admin/qr' ? 'active' : '' %>">QR Code</a>
+      <a href="/admin/users?role=candidate">Candidatos</a>
+      <a href="/admin/users?role=company">Empresas</a>
+      <a href="/admin/jobs">Vagas</a>
+      <a href="/admin/applications">Candidaturas</a>
+      <a href="/admin/broadcast">Disparo</a>
+      <a href="/admin/notes">Suporte</a>
+    </nav>
+    <form method="post" action="/admin/logout">
+      <button class="logout" type="submit">Sair</button>
+    </form>
+  </aside>
+  <main class="main">

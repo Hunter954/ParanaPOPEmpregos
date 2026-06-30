@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ParanáPOP Empregos</title>
+  <link rel="stylesheet" href="/public/site.css">
+</head>
+<body>
+  <header class="hero">
+    <div>
+      <span class="badge">ParanáPOP</span>
+      <h1>Empregos pelo WhatsApp</h1>
+      <p>Candidatos recebem vagas no perfil. Empresas cadastram oportunidades direto pelo bot.</p>
+      <a href="/admin/login" class="button">Painel administrativo</a>
+    </div>
+  </header>
+  <main>
+    <h2>Vagas recentes</h2>
+    <section class="jobs">
+      <% if (!jobs.length) { %>
+        <p>Ainda não há vagas ativas.</p>
+      <% } %>
+      <% jobs.forEach(job => { %>
+        <article>
+          <strong>#<%= job.id %> — <%= job.title %></strong>
+          <span><%= job.company_name || 'Empresa cadastrada' %></span>
+          <small><%= job.city || '-' %> • <%= job.area || '-' %> • <%= job.modality || '-' %></small>
+        </article>
+      <% }) %>
+    </section>
+  </main>
+</body>
+</html>

@@ -1,0 +1,62 @@
+<%- include('../partials/admin-header') %>
+<header class="page-header">
+  <div>
+    <h1>Dashboard</h1>
+    <p>Visão geral do ParanáPOP Empregos.</p>
+  </div>
+  <form method="post" action="/admin/bot/start">
+    <button class="primary">Iniciar/Reiniciar bot</button>
+  </form>
+</header>
+
+<section class="grid stats">
+  <article><strong><%= stats.candidates %></strong><span>Candidatos</span></article>
+  <article><strong><%= stats.companies %></strong><span>Empresas</span></article>
+  <article><strong><%= stats.active_jobs %></strong><span>Vagas ativas</span></article>
+  <article><strong><%= stats.applications %></strong><span>Candidaturas</span></article>
+  <article><strong><%= stats.new_users_7d %></strong><span>Novos 7 dias</span></article>
+</section>
+
+<section class="panel">
+  <h2>Status do WhatsApp</h2>
+  <div class="status <%= bot.ready ? 'ok' : 'warn' %>"><%= bot.status %></div>
+  <% if (bot.lastError) { %><pre class="error"><%= bot.lastError %></pre><% } %>
+  <% if (bot.qrAvailable) { %><p>QR Code disponível. <a href="/admin/qr">Abrir leitura</a></p><% } %>
+</section>
+
+<div class="two-columns">
+  <section class="panel">
+    <h2>Usuários recentes</h2>
+    <table>
+      <thead><tr><th>Nome</th><th>Perfil</th><th>Cidade</th><th>Telefone</th></tr></thead>
+      <tbody>
+      <% recentUsers.forEach(user => { %>
+        <tr>
+          <td><%= user.name || user.company_name || '-' %></td>
+          <td><%= user.role || '-' %></td>
+          <td><%= user.city || '-' %></td>
+          <td><%= user.phone || '-' %></td>
+        </tr>
+      <% }) %>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="panel">
+    <h2>Vagas recentes</h2>
+    <table>
+      <thead><tr><th>#</th><th>Título</th><th>Status</th><th>Cidade</th></tr></thead>
+      <tbody>
+      <% recentJobs.forEach(job => { %>
+        <tr>
+          <td>#<%= job.id %></td>
+          <td><%= job.title %></td>
+          <td><span class="pill"><%= job.status %></span></td>
+          <td><%= job.city || '-' %></td>
+        </tr>
+      <% }) %>
+      </tbody>
+    </table>
+  </section>
+</div>
+<%- include('../partials/admin-footer') %>

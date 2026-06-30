@@ -1,0 +1,56 @@
+<%- include('../partials/admin-header') %>
+<header class="page-header">
+  <div>
+    <h1>Vagas</h1>
+    <p>Gerencie vagas cadastradas pelas empresas.</p>
+  </div>
+</header>
+
+<section class="panel">
+  <form class="filters" method="get" action="/admin/jobs">
+    <select name="status">
+      <option value="" <%= !status ? 'selected' : '' %>>Todos</option>
+      <option value="active" <%= status === 'active' ? 'selected' : '' %>>Ativas</option>
+      <option value="paused" <%= status === 'paused' ? 'selected' : '' %>>Pausadas</option>
+      <option value="deleted" <%= status === 'deleted' ? 'selected' : '' %>>Excluídas</option>
+    </select>
+    <button>Filtrar</button>
+  </form>
+
+  <table>
+    <thead><tr><th>#</th><th>Vaga</th><th>Empresa</th><th>Cidade</th><th>Status</th><th>Ações</th></tr></thead>
+    <tbody>
+      <% jobs.forEach(job => { %>
+        <tr>
+          <td>#<%= job.id %></td>
+          <td>
+            <strong><%= job.title %></strong><br>
+            <small><%= job.area || '-' %> • <%= job.modality || '-' %> • <%= job.salary || 'A combinar' %></small>
+            <details><summary>Detalhes</summary><p><%= job.requirements || '' %></p><p><%= job.benefits || '' %></p><p><%= job.contact_info || '' %></p></details>
+          </td>
+          <td><%= job.company_name || '-' %><br><small><%= job.company_phone || '' %></small></td>
+          <td><%= job.city || '-' %></td>
+          <td><span class="pill"><%= job.status %></span></td>
+          <td class="actions">
+            <form method="post" action="/admin/jobs/<%= job.id %>/status">
+              <input type="hidden" name="returnTo" value="/admin/jobs?status=<%= status %>">
+              <input type="hidden" name="status" value="active">
+              <button>Ativar</button>
+            </form>
+            <form method="post" action="/admin/jobs/<%= job.id %>/status">
+              <input type="hidden" name="returnTo" value="/admin/jobs?status=<%= status %>">
+              <input type="hidden" name="status" value="paused">
+              <button>Pausar</button>
+            </form>
+            <form method="post" action="/admin/jobs/<%= job.id %>/status">
+              <input type="hidden" name="returnTo" value="/admin/jobs?status=<%= status %>">
+              <input type="hidden" name="status" value="deleted">
+              <button class="danger">Excluir</button>
+            </form>
+          </td>
+        </tr>
+      <% }) %>
+    </tbody>
+  </table>
+</section>
+<%- include('../partials/admin-footer') %>

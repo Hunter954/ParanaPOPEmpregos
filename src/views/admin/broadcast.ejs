@@ -1,0 +1,24 @@
+<%- include('../partials/admin-header') %>
+<header class="page-header">
+  <div>
+    <h1>Disparo manual</h1>
+    <p>Envie comunicados para candidatos, empresas ou todos.</p>
+  </div>
+</header>
+
+<section class="panel narrow">
+  <% if (result) { %><div class="alert success"><%= result %></div><% } %>
+  <form method="post" action="/admin/broadcast" class="stacked">
+    <label>Público</label>
+    <select name="target">
+      <option value="candidate">Candidatos</option>
+      <option value="company">Empresas</option>
+      <option value="all">Todos</option>
+    </select>
+    <label>Mensagem</label>
+    <textarea name="message" rows="8" required placeholder="Digite a mensagem do WhatsApp..."></textarea>
+    <button class="primary">Enviar</button>
+  </form>
+  <p class="muted">Use com moderação para evitar bloqueios. O envio é espaçado automaticamente.</p>
+</section>
+<%- include('../partials/admin-footer') %>

@@ -1,0 +1,70 @@
+<%- include('../partials/admin-header') %>
+<header class="page-header">
+  <div>
+    <h1>Usuários</h1>
+    <p>Candidatos, empresas e contatos de suporte.</p>
+  </div>
+</header>
+
+<section class="panel">
+  <form class="filters" method="get" action="/admin/users">
+    <select name="role">
+      <option value="" <%= !role ? 'selected' : '' %>>Todos</option>
+      <option value="candidate" <%= role === 'candidate' ? 'selected' : '' %>>Candidatos</option>
+      <option value="company" <%= role === 'company' ? 'selected' : '' %>>Empresas</option>
+      <option value="support" <%= role === 'support' ? 'selected' : '' %>>Suporte</option>
+    </select>
+    <input type="search" name="q" value="<%= q %>" placeholder="Buscar nome, cidade, telefone...">
+    <button>Filtrar</button>
+  </form>
+
+  <table>
+    <thead>
+      <tr><th>Nome/Empresa</th><th>Perfil</th><th>Cidade</th><th>Telefone</th><th>Plano</th><th>Ações</th></tr>
+    </thead>
+    <tbody>
+      <% users.forEach(user => { %>
+        <tr>
+          <td>
+            <strong><%= user.company_name || user.name || '-' %></strong><br>
+            <small><%= user.responsible_name || user.name || '' %></small>
+          </td>
+          <td><%= user.role || '-' %></td>
+          <td><%= user.city || '-' %></td>
+          <td><%= user.phone || '-' %></td>
+          <td>
+            <% if (user.role === 'company') { %>
+              <%= user.company_plan %>
+            <% } else { %>
+              <%= user.subscription_plan %> / <%= user.subscription_status %>
+            <% } %>
+          </td>
+          <td class="actions">
+            <% if (user.role === 'candidate') { %>
+              <form method="post" action="/admin/users/<%= user.id %>/premium">
+                <input type="hidden" name="returnTo" value="/admin/users?role=<%= role %>&q=<%= q %>">
+                <input type="hidden" name="days" value="90">
+                <button>+90 dias</button>
+              </form>
+            <% } %>
+            <% if (user.role === 'company') { %>
+              <form method="post" action="/admin/users/<%= user.id %>/company-premium">
+                <input type="hidden" name="returnTo" value="/admin/users?role=<%= role %>&q=<%= q %>">
+                <button>Empresa premium</button>
+              </form>
+            <% } %>
+            <details>
+              <summary>Enviar WhatsApp</summary>
+              <form method="post" action="/admin/users/<%= user.id %>/send" class="stacked">
+                <input type="hidden" name="returnTo" value="/admin/users?role=<%= role %>&q=<%= q %>">
+                <textarea name="message" placeholder="Mensagem" required></textarea>
+                <button>Enviar</button>
+              </form>
+            </details>
+          </td>
+        </tr>
+      <% }) %>
+    </tbody>
+  </table>
+</section>
+<%- include('../partials/admin-footer') %>

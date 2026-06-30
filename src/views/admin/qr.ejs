@@ -1,0 +1,26 @@
+<%- include('../partials/admin-header') %>
+<header class="page-header">
+  <div>
+    <h1>Conectar WhatsApp</h1>
+    <p>Abra o WhatsApp comercial, vá em aparelhos conectados e leia o QR Code.</p>
+  </div>
+  <form method="post" action="/admin/bot/start">
+    <button class="primary">Gerar/Iniciar</button>
+  </form>
+</header>
+
+<section class="panel centered">
+  <div class="status <%= bot.ready ? 'ok' : 'warn' %>"><%= bot.status %></div>
+  <% if (bot.qr) { %>
+    <img class="qr" src="<%= bot.qr %>" alt="QR Code WhatsApp">
+    <p>Esta tela pode ser atualizada até o QR aparecer. Após conectar, o QR some automaticamente.</p>
+  <% } else if (bot.ready) { %>
+    <h2>✅ WhatsApp conectado</h2>
+    <p>O bot já está pronto para receber mensagens.</p>
+  <% } else { %>
+    <h2>QR ainda não disponível</h2>
+    <p>Clique em “Gerar/Iniciar” ou atualize a página em alguns segundos.</p>
+  <% } %>
+  <% if (bot.lastError) { %><pre class="error"><%= bot.lastError %></pre><% } %>
+</section>
+<%- include('../partials/admin-footer') %>
