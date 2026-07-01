@@ -25,7 +25,10 @@
     <p>Última mensagem recebida: <strong><%= bot.lastInboundPreview %></strong><br><span class="muted"><%= bot.lastInboundFrom %> em <%= new Date(bot.lastInboundAt).toLocaleString('pt-BR') %></span></p>
   <% } %>
   <% if (bot.lastOutboundAt) { %>
-    <p>Última resposta enviada: <strong><%= new Date(bot.lastOutboundAt).toLocaleString('pt-BR') %></strong></p>
+    <p>Última resposta enviada: <strong><%= bot.lastOutboundPreview || 'resposta enviada' %></strong><br><span class="muted"><%= bot.lastOutboundTo || '' %> em <%= new Date(bot.lastOutboundAt).toLocaleString('pt-BR') %></span></p>
+  <% } %>
+  <% if (bot.lastOutboundError) { %>
+    <p class="error">Erro no último envio: <%= bot.lastOutboundError %></p>
   <% } %>
 
   <% if (bot.qr) { %>

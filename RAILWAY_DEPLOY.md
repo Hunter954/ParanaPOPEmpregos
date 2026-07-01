@@ -38,3 +38,8 @@ WA_START_ON_BOOT
 - `/admin/qr` mostra QR, conectado, última mensagem recebida e última resposta enviada.
 
 O WhatsApp inicia automaticamente alguns segundos depois que o servidor sobe.
+
+
+## Correção 1.0.7
+
+Esta versão corrige resposta para contatos que chegam como `@lid` no Baileys. O bot agora responde usando exatamente o JID recebido pelo WhatsApp, sem converter para `@s.whatsapp.net`. A tela `/admin/qr` também mostra o texto da última resposta e erro de envio, se acontecer.

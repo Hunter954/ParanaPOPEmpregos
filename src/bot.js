@@ -24,7 +24,10 @@ const state = {
   lastInboundAt: null,
   lastInboundFrom: null,
   lastInboundPreview: null,
-  lastOutboundAt: null
+  lastOutboundAt: null,
+  lastOutboundTo: null,
+  lastOutboundPreview: null,
+  lastOutboundError: null
 };
 
 function boolEnv(name, fallback) {
@@ -61,11 +64,30 @@ async function cleanSessionArtifacts() {
 }
 
 function normalizeToBaileysJid(jid) {
-  const value = String(jid || '');
+  const value = String(jid || '').trim();
   if (!value) return value;
-  if (value.endsWith('@s.whatsapp.net') || value.endsWith('@g.us')) return value;
-  const phone = value.replace(/@.+$/, '').replace(/\D/g, '');
+
+  // Importante: o WhatsApp/Baileys agora pode entregar mensagens com JID @lid.
+  // Antes o código transformava 123@lid em 123@s.whatsapp.net, e a resposta
+  // ficava presa ou ia para um destino inválido. Se já veio com @, mantenha
+  // exatamente o JID original retornado pelo Baileys.
+  if (value.includes('@')) return value;
+
+  const phone = value.replace(/\D/g, '');
   return phone ? `${phone}@s.whatsapp.net` : value;
+}
+
+function previewText(text, size = 100) {
+  const value = String(text || '').replace(/\s+/g, ' ').trim();
+  return value.length > size ? `${value.slice(0, size)}...` : value;
+}
+
+function withTimeout(promise, ms, message) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
 async function stopBot() {
@@ -178,8 +200,27 @@ async function startBaileys() {
   client = {
     engine: 'baileys',
     sendText: async (jid, text) => {
-      state.lastOutboundAt = new Date();
-      return sock.sendMessage(normalizeToBaileysJid(jid), { text });
+      const target = normalizeToBaileysJid(jid);
+      const timeoutMs = intEnv('WA_SEND_TIMEOUT_MS', 25000);
+
+      try {
+        const result = await withTimeout(
+          sock.sendMessage(target, { text }),
+          timeoutMs,
+          `Timeout ao enviar resposta para ${target} depois de ${timeoutMs}ms`
+        );
+
+        state.lastOutboundAt = new Date();
+        state.lastOutboundTo = target;
+        state.lastOutboundPreview = previewText(text);
+        state.lastOutboundError = null;
+        console.log(`[WhatsApp] Resposta enviada para ${target}: ${state.lastOutboundPreview}`);
+        return result;
+      } catch (error) {
+        state.lastOutboundError = `${target}: ${error.message}`;
+        console.error(`[WhatsApp] Falha ao enviar resposta para ${target}:`, error);
+        throw error;
+      }
     }
   };
 

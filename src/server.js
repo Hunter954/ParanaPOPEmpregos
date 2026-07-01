@@ -13,7 +13,7 @@ const publicRoutes = require('./routes/public');
 const webhookRoutes = require('./routes/webhooks');
 
 const app = express();
-const APP_VERSION = '1.0.6-baileys-auto-resposta-fix';
+const APP_VERSION = '1.0.7-baileys-lid-resposta-fix';
 
 let migrationsReady = false;
 let migrationsError = null;
@@ -183,7 +183,7 @@ function listenOnPort(port, primary = false) {
   server.listen(port, '0.0.0.0', () => {
     console.log(`ParanáPOP Empregos ouvindo em 0.0.0.0:${port}${primary ? ' (principal)' : ''}`);
     if (primary) {
-      console.log('VERSAO DO PROJETO: 1.0.6 BAILEYS AUTO RESPOSTA FIX');
+      console.log('VERSAO DO PROJETO: 1.0.7 BAILEYS LID RESPOSTA FIX');
       console.log(`Motor WhatsApp configurado: ${getBotState().engine}`);
       console.log(`Session store: ${sessionStoreMode}`);
       runStartupTasks();

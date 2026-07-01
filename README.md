@@ -26,3 +26,8 @@ Não precisa de OpenWA, Puppeteer, Chrome ou WHATSAPP_ENGINE.
 5. Envie `olá` para o número.
 
 Se não responder, olhe `/admin/qr`: agora a tela mostra a última mensagem recebida e a última resposta enviada.
+
+
+## Correção 1.0.7
+
+Esta versão corrige resposta para contatos que chegam como `@lid` no Baileys. O bot agora responde usando exatamente o JID recebido pelo WhatsApp, sem converter para `@s.whatsapp.net`. A tela `/admin/qr` também mostra o texto da última resposta e erro de envio, se acontecer.
