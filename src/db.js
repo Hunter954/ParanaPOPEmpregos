@@ -296,6 +296,41 @@ async function listApplicationsForJob(jobId) {
   return result.rows;
 }
 
+async function deleteUserAccount(userId) {
+  const client = await getPool().connect();
+  try {
+    await client.query('BEGIN');
+
+    const current = await client.query('SELECT * FROM users WHERE id = $1 FOR UPDATE', [userId]);
+    const user = current.rows[0] || null;
+    if (!user) {
+      await client.query('ROLLBACK');
+      return { user: null, deletedJobs: 0 };
+    }
+
+    let deletedJobs = 0;
+    if (user.role === 'company') {
+      const jobs = await client.query(
+        `UPDATE jobs
+         SET status = 'deleted', updated_at = NOW()
+         WHERE company_user_id = $1 AND status <> 'deleted'`,
+        [userId]
+      );
+      deletedJobs = jobs.rowCount || 0;
+    }
+
+    const deleted = await client.query('DELETE FROM users WHERE id = $1 RETURNING *', [userId]);
+    await client.query('COMMIT');
+
+    return { user: deleted.rows[0] || user, deletedJobs };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 async function logMessage({ userId, whatsappJid, direction, body, raw }) {
   try {
     await query(
@@ -354,6 +389,7 @@ module.exports = {
   listCandidatesForAlerts,
   createApplication,
   listApplicationsForJob,
+  deleteUserAccount,
   logMessage,
   addAdminNote,
   getDashboardStats

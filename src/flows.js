@@ -14,6 +14,7 @@ const {
   listCandidatesForAlerts,
   createApplication,
   listApplicationsForJob,
+  deleteUserAccount,
   logMessage,
   query
 } = require('./db');
@@ -77,6 +78,58 @@ function delay(ms) {
 async function send(client, jid, text, userId = null) {
   await client.sendText(jid, text);
   await logMessage({ userId, whatsappJid: jid, direction: 'out', body: text });
+}
+
+function isDeleteRequest(text) {
+  const n = normalize(text);
+  return [
+    'excluir cadastro',
+    'apagar cadastro',
+    'deletar cadastro',
+    'remover cadastro',
+    'excluir minha conta',
+    'apagar minha conta'
+  ].some((term) => n.includes(term));
+}
+
+function deleteConfirmationMessage(user) {
+  const roleText = user.role === 'company' ? 'empresa' : 'candidato';
+  const extra = user.role === 'company'
+    ? '\n\n⚠️ As vagas cadastradas por esta empresa serão marcadas como excluídas e não aparecerão mais para candidatos.'
+    : '\n\n⚠️ Suas candidaturas vinculadas a este cadastro também serão removidas.';
+
+  return `╭─ 🗑️ *Excluir cadastro*\n` +
+    `Você está prestes a excluir seu cadastro de *${roleText}* no ParanáPOP Empregos.${extra}\n\n` +
+    `Para confirmar, digite exatamente:\n*CONFIRMAR EXCLUSÃO*\n\n` +
+    `Para desistir, envie *CANCELAR*.\n` +
+    `╰─ Essa ação não pode ser desfeita.`;
+}
+
+async function startAccountDeleteFlow(client, jid, user) {
+  user = await updateUser(user.id, { onboarding_step: 'account_delete_confirm', onboarding_data: {} });
+  await send(client, jid, deleteConfirmationMessage(user), user.id);
+}
+
+async function handleAccountDeleteConfirmation(client, jid, user, body) {
+  const n = normalize(body);
+
+  if (n === 'cancelar' || n === 'menu' || n === 'voltar') {
+    user = await clearUserFlow(user.id, `${user.role}_menu`);
+    await send(client, jid, `Exclusão cancelada.\n\n${user.role === 'company' ? companyMenu(user) : candidateMenu(user)}`, user.id);
+    return;
+  }
+
+  if (n !== 'confirmar exclusao') {
+    await send(client, jid, `Para excluir o cadastro, digite exatamente *CONFIRMAR EXCLUSÃO*.\n\nPara desistir, envie *CANCELAR*.`, user.id);
+    return;
+  }
+
+  const result = await deleteUserAccount(user.id);
+  const companyJobsText = user.role === 'company' && result.deletedJobs
+    ? `\n\n${result.deletedJobs} vaga(s) da empresa foram marcadas como excluídas.`
+    : '';
+
+  await send(client, jid, `✅ Seu cadastro foi excluído do ParanáPOP Empregos.${companyJobsText}\n\nPara começar novamente no futuro, envie *OI*.`, null);
 }
 
 function candidateIsActive(user) {
@@ -201,6 +254,16 @@ async function handleIncomingMessage(client, message) {
     return;
   }
 
+  if (user.onboarding_step === 'account_delete_confirm' && ['candidate', 'company'].includes(user.role)) {
+    await handleAccountDeleteConfirmation(client, jid, user, body);
+    return;
+  }
+
+  if (isDeleteRequest(body) && ['candidate', 'company'].includes(user.role)) {
+    await startAccountDeleteFlow(client, jid, user);
+    return;
+  }
+
   const detailsId = parseIdCommand(body, 'vaga');
   if (detailsId) {
     await sendJobDetails(client, jid, user, detailsId);
@@ -243,19 +306,19 @@ async function handleRoleSelection(client, jid, user, body) {
        RETURNING *`,
       [user.id, TRIAL_DAYS]
     );
-    await send(client, jid, `Perfeito! Você escolheu *Candidato(a)*.\n\nPara cadastrar seu acesso gratuito de ${TRIAL_DAYS} dias, me diga seu *nome completo*.` , result.rows[0].id);
+    await send(client, jid, `╭─ 🔎 *Cadastro de candidato*\nPerfeito! Você escolheu *Candidato(a)*.\n\nSeu acesso gratuito terá *${TRIAL_DAYS} dias*.\n\nPara começar, me diga seu *nome completo*.\n╰─ Responda com seu nome.`, result.rows[0].id);
     return;
   }
 
   if (n === '2' || includesAny(n, ['empresa', 'contratar', 'empregador'])) {
     const updated = await updateUser(user.id, { role: 'company', onboarding_step: 'company_name' });
-    await send(client, jid, 'Ótimo! Você escolheu *Empresa*.\n\nQual é o *nome da empresa*?', updated.id);
+    await send(client, jid, '╭─ 🏢 *Cadastro da empresa*\nÓtimo! Você escolheu *Empresa*.\n\nQual é o *nome da empresa*?\n╰─ Responda com o nome comercial.', updated.id);
     return;
   }
 
   if (n === '3' || includesAny(n, ['suporte', 'atendente', 'ajuda'])) {
     const updated = await updateUser(user.id, { role: 'support', onboarding_step: 'support_name' });
-    await send(client, jid, 'Certo, vou direcionar para o suporte. Qual é o seu nome?', updated.id);
+    await send(client, jid, '╭─ 🧑‍💻 *Suporte*\nCerto, vou direcionar seu atendimento.\n\nQual é o seu nome?\n╰─ Responda aqui mesmo.', updated.id);
     return;
   }
 
@@ -267,24 +330,24 @@ async function handleCandidate(client, jid, user, body) {
 
   if (user.onboarding_step === 'candidate_name') {
     if (body.length < 3) {
-      await send(client, jid, 'Me envie seu nome completo para continuar.', user.id);
+      await send(client, jid, '╭─ 👤 *Nome completo*\nMe envie seu nome completo para continuar.\n╰─ Ex.: Maria Aparecida Silva', user.id);
       return;
     }
     user = await updateUser(user.id, { name: body, onboarding_step: 'candidate_city' });
-    await send(client, jid, `Prazer, *${body}*!\n\nQual cidade você quer buscar vagas? Ex.: Cascavel, Foz do Iguaçu, Curitiba.`, user.id);
+    await send(client, jid, `╭─ 📍 *Cidade de busca*\nPrazer, *${body}*!\n\nEm qual cidade você quer buscar vagas?\n╰─ Ex.: Cascavel, Foz do Iguaçu, Curitiba.`, user.id);
     return;
   }
 
   if (user.onboarding_step === 'candidate_city') {
     user = await updateUser(user.id, { city: body, onboarding_step: 'candidate_area' });
-    await send(client, jid, `Legal. Agora me diga as *áreas de interesse* separadas por vírgula.\n\nEx.: Vendas, Atendimento, Administrativo, Motorista, Cozinha, Limpeza, Tecnologia.\n\nSe quiser tudo, escreva *Todas*.`, user.id);
+    await send(client, jid, `╭─ 🧩 *Áreas de interesse*\nLegal. Agora me diga as áreas separadas por vírgula.\n\nEx.: Vendas, Atendimento, Administrativo, Motorista, Cozinha, Limpeza, Tecnologia.\n\n╰─ Se quiser receber tudo, escreva *Todas*.`, user.id);
     return;
   }
 
   if (user.onboarding_step === 'candidate_area') {
     const areas = splitList(body);
     user = await updateUser(user.id, { area_preferences: areas, onboarding_step: 'candidate_modality' });
-    await send(client, jid, `Qual modalidade você prefere?\n\n*1* — Presencial\n*2* — Remoto\n*3* — Híbrido\n*4* — Tanto faz`, user.id);
+    await send(client, jid, `╭─ 💼 *Modalidade*\nQual modalidade você prefere?\n\n*1*  Presencial\n*2*  Remoto\n*3*  Híbrido\n*4*  Tanto faz\n╰─ Responda com o número.`, user.id);
     return;
   }
 
@@ -292,25 +355,30 @@ async function handleCandidate(client, jid, user, body) {
     const modalityMap = { '1': ['Presencial'], '2': ['Remoto'], '3': ['Híbrido'], '4': ['Tanto faz'] };
     const modalities = modalityMap[n] || splitList(body);
     user = await updateUser(user.id, { modality_preferences: modalities, onboarding_step: 'candidate_experience' });
-    await send(client, jid, `Agora envie um resumo rápido da sua experiência.\n\nEx.: "2 anos com atendimento ao público e caixa".\n\nSe não tiver experiência, escreva *Primeiro emprego*.`, user.id);
+    await send(client, jid, `╭─ 🧾 *Experiência*\nAgora envie um resumo rápido da sua experiência.\n\nEx.: "2 anos com atendimento ao público e caixa".\n\n╰─ Se não tiver experiência, escreva *Primeiro emprego*.`, user.id);
     return;
   }
 
   if (user.onboarding_step === 'candidate_experience') {
     user = await updateUser(user.id, { experience: body, onboarding_step: 'candidate_receive_mode' });
-    await send(client, jid, `Cadastro quase pronto!\n\nComo você quer receber vagas?\n\n*1* — Todas as vagas publicadas\n*2* — Apenas vagas compatíveis com meu perfil`, user.id);
+    await send(client, jid, `╭─ 🔔 *Preferência de alertas*\nCadastro quase pronto!\n\nComo você quer receber vagas?\n\n*1*  Todas as vagas publicadas\n*2*  Apenas vagas compatíveis com meu perfil\n╰─ Responda com o número.`, user.id);
     return;
   }
 
   if (user.onboarding_step === 'candidate_receive_mode') {
     const receiveMode = n === '1' || includesAny(n, ['todas', 'todos']) ? 'all' : 'profile';
     user = await updateUser(user.id, { receive_mode: receiveMode, onboarding_step: 'candidate_menu' });
-    await send(client, jid, `✅ Cadastro concluído!\n\nVocê ganhou *${TRIAL_DAYS} dias grátis*. Futuramente o premium de *R$ ${PREMIUM_PRICE}* vai liberar *${PREMIUM_DAYS} dias* de assinatura com prioridade de alertas e recursos extras.\n\n${candidateMenu(user)}`, user.id);
+    await send(client, jid, `✅ *Cadastro concluído!*\n\nVocê ganhou *${TRIAL_DAYS} dias grátis*. Futuramente o premium de *R$ ${PREMIUM_PRICE}* vai liberar *${PREMIUM_DAYS} dias* de assinatura com prioridade de alertas e recursos extras.\n\n${candidateMenu(user)}`, user.id);
     return;
   }
 
   if (user.onboarding_step === 'candidate_edit_choice') {
     await handleCandidateEdit(client, jid, user, body);
+    return;
+  }
+
+  if (n === '9') {
+    await startAccountDeleteFlow(client, jid, user);
     return;
   }
 
@@ -355,7 +423,6 @@ async function handleCandidate(client, jid, user, body) {
     await send(client, jid, supportMenu(), user.id);
     return;
   }
-
   await send(client, jid, candidateMenu(user), user.id);
 }
 
@@ -395,17 +462,15 @@ async function handleCandidateEdit(client, jid, user, body) {
 }
 
 async function sendCandidateProfile(client, jid, user) {
-  const text = `👤 *Seu perfil*
-
-Nome: ${user.name || '-'}
+  const text = `╭─ 👤 *Meu perfil*
+Nome: *${user.name || '-'}*
 Cidade: ${user.city || '-'}
 Áreas: ${(user.area_preferences || []).join(', ') || '-'}
 Modalidade: ${(user.modality_preferences || []).join(', ') || '-'}
 Experiência: ${user.experience || '-'}
 Recebimento: ${user.receive_mode === 'all' ? 'Todas as vagas' : 'Vagas do perfil'}
 Alertas: ${user.alerts_enabled ? 'Ativos' : 'Pausados'}
-
-Para editar, envie *4* no menu.`;
+╰─ Para editar, envie *4* no menu.`;
   await send(client, jid, text, user.id);
 }
 
@@ -416,7 +481,7 @@ async function sendCandidateJobs(client, jid, user, all) {
     return;
   }
 
-  await send(client, jid, `🔎 Encontrei ${jobs.length} vaga(s):\n\n${jobs.map(jobCard).join('\n\n— — —\n\n')}`, user.id);
+  await send(client, jid, `╭─ 🔎 *Vagas encontradas*\nEncontrei *${jobs.length}* vaga(s) para você.\n╰─ Use os atalhos de cada card.\n\n${jobs.map(jobCard).join('\n\n')}`, user.id);
 }
 
 async function sendJobDetails(client, jid, user, jobId) {
@@ -455,24 +520,19 @@ async function handleCompany(client, jid, user, body) {
 
   if (user.onboarding_step === 'company_name') {
     user = await updateUser(user.id, { company_name: body, onboarding_step: 'company_responsible' });
-    await send(client, jid, 'Qual é o nome do responsável pelo cadastro?', user.id);
+    await send(client, jid, '╭─ 👤 *Responsável*\nQual é o nome do responsável pelo cadastro?\n╰─ Ex.: Ana Souza', user.id);
     return;
   }
 
   if (user.onboarding_step === 'company_responsible') {
     user = await updateUser(user.id, { responsible_name: body, name: body, onboarding_step: 'company_city' });
-    await send(client, jid, 'Qual é a cidade principal da empresa?', user.id);
+    await send(client, jid, '╭─ 📍 *Cidade da empresa*\nQual é a cidade principal da empresa?\n╰─ Ex.: Foz do Iguaçu', user.id);
     return;
   }
 
   if (user.onboarding_step === 'company_city') {
     user = await updateUser(user.id, { city: body, onboarding_step: 'company_menu' });
-    await send(client, jid, `✅ Empresa cadastrada!\n\nNo plano inicial você pode cadastrar até *${COMPANY_FREE_JOB_LIMIT} vagas*. Futuramente o plano de *R$ ${COMPANY_PREMIUM_PRICE}* vai liberar mais vagas e gestão avançada.\n\n${companyMenu(user)}`, user.id);
-    return;
-  }
-
-  if (user.onboarding_step?.startsWith('job_')) {
-    await handleJobCreation(client, jid, user, body);
+    await send(client, jid, `✅ *Empresa cadastrada!*\n\nNo plano inicial você pode cadastrar até *${COMPANY_FREE_JOB_LIMIT} vagas*. Futuramente o plano de *R$ ${COMPANY_PREMIUM_PRICE}* vai liberar mais vagas e gestão avançada.\n\n${companyMenu(user)}`, user.id);
     return;
   }
 
@@ -491,6 +551,11 @@ async function handleCompany(client, jid, user, body) {
     return;
   }
 
+  if (user.onboarding_step?.startsWith('job_')) {
+    await handleJobCreation(client, jid, user, body);
+    return;
+  }
+
   if (n === '1') {
     const activeCount = await countCompanyActiveJobs(user.id);
     if (user.company_plan === 'free' && activeCount >= COMPANY_FREE_JOB_LIMIT) {
@@ -498,7 +563,7 @@ async function handleCompany(client, jid, user, body) {
       return;
     }
     user = await updateUser(user.id, { onboarding_step: 'job_title', onboarding_data: {} });
-    await send(client, jid, 'Vamos cadastrar uma vaga. Qual é o *título da vaga*?\n\nEx.: Atendente, Vendedor(a), Auxiliar Administrativo.', user.id);
+    await send(client, jid, '╭─ ➕ *Nova vaga*\nVamos cadastrar uma vaga.\n\nQual é o *título da vaga*?\n╰─ Ex.: Atendente, Vendedor(a), Auxiliar Administrativo.', user.id);
     return;
   }
 
@@ -509,19 +574,19 @@ async function handleCompany(client, jid, user, body) {
 
   if (n === '3') {
     user = await updateUser(user.id, { onboarding_step: 'job_delete_id' });
-    await send(client, jid, 'Envie o número da vaga que deseja pausar/excluir. Ex.: *12*\n\nSe não souber o número, envie *2* para ver suas vagas.', user.id);
+    await send(client, jid, '╭─ ⏸️ *Pausar vaga*\nEnvie o número da vaga que deseja pausar.\n\nEx.: *12*\n\n╰─ Se não souber o número, envie *2* para ver suas vagas.', user.id);
     return;
   }
 
   if (n === '4') {
     user = await updateUser(user.id, { onboarding_step: 'job_reactivate_id' });
-    await send(client, jid, 'Envie o número da vaga que deseja reativar. Ex.: *12*', user.id);
+    await send(client, jid, '╭─ ✅ *Reativar vaga*\nEnvie o número da vaga que deseja reativar.\n╰─ Ex.: *12*', user.id);
     return;
   }
 
   if (n === '5') {
     user = await updateUser(user.id, { onboarding_step: 'job_candidates_id' });
-    await send(client, jid, 'Envie o número da vaga para ver os candidatos. Ex.: *12*', user.id);
+    await send(client, jid, '╭─ 📥 *Candidatos da vaga*\nEnvie o número da vaga para ver os candidatos.\n╰─ Ex.: *12*', user.id);
     return;
   }
 
@@ -533,6 +598,11 @@ async function handleCompany(client, jid, user, body) {
   if (n === '7') {
     user = await updateUser(user.id, { onboarding_step: 'support_message' });
     await send(client, jid, supportMenu(), user.id);
+    return;
+  }
+
+  if (n === '8') {
+    await startAccountDeleteFlow(client, jid, user);
     return;
   }
 
@@ -552,44 +622,44 @@ async function handleJobCreation(client, jid, user, body) {
 
   if (user.onboarding_step === 'job_title') {
     user = await updateUser(user.id, { onboarding_step: 'job_city', onboarding_data: { draftJob: { title: body } } });
-    await send(client, jid, 'Qual é a *cidade* da vaga? Se for remoto, escreva *Remoto*.', user.id);
+    await send(client, jid, '╭─ 📍 *Cidade da vaga*\nQual é a cidade da vaga?\n╰─ Se for remoto, escreva *Remoto*.', user.id);
     return;
   }
 
   if (user.onboarding_step === 'job_city') {
     user = await updateUser(user.id, { onboarding_step: 'job_area', onboarding_data: { draftJob: { ...draft, city: body } } });
-    await send(client, jid, 'Qual é a *área* da vaga? Ex.: Vendas, Atendimento, Administrativo, Tecnologia, Serviços Gerais.', user.id);
+    await send(client, jid, '╭─ 🧩 *Área da vaga*\nQual é a área da vaga?\n╰─ Ex.: Vendas, Atendimento, Administrativo, Tecnologia, Serviços Gerais.', user.id);
     return;
   }
 
   if (user.onboarding_step === 'job_area') {
     user = await updateUser(user.id, { onboarding_step: 'job_modality', onboarding_data: { draftJob: { ...draft, area: body } } });
-    await send(client, jid, 'Qual é a modalidade?\n\n*1* — Presencial\n*2* — Remoto\n*3* — Híbrido', user.id);
+    await send(client, jid, '╭─ 💼 *Modalidade*\nQual é a modalidade?\n\n*1*  Presencial\n*2*  Remoto\n*3*  Híbrido\n╰─ Responda com o número.', user.id);
     return;
   }
 
   if (user.onboarding_step === 'job_modality') {
     const map = { '1': 'Presencial', '2': 'Remoto', '3': 'Híbrido' };
     user = await updateUser(user.id, { onboarding_step: 'job_salary', onboarding_data: { draftJob: { ...draft, modality: map[n] || body } } });
-    await send(client, jid, 'Informe o salário ou escreva *A combinar*.', user.id);
+    await send(client, jid, '╭─ 💰 *Salário*\nInforme o salário ou escreva *A combinar*.\n╰─ Ex.: R$ 1.800 + comissão', user.id);
     return;
   }
 
   if (user.onboarding_step === 'job_salary') {
     user = await updateUser(user.id, { onboarding_step: 'job_requirements', onboarding_data: { draftJob: { ...draft, salary: body } } });
-    await send(client, jid, 'Envie os principais *requisitos* da vaga.', user.id);
+    await send(client, jid, '╭─ ✅ *Requisitos*\nEnvie os principais requisitos da vaga.\n╰─ Ex.: experiência com atendimento, disponibilidade sábado.', user.id);
     return;
   }
 
   if (user.onboarding_step === 'job_requirements') {
     user = await updateUser(user.id, { onboarding_step: 'job_benefits', onboarding_data: { draftJob: { ...draft, requirements: body } } });
-    await send(client, jid, 'Envie os *benefícios* da vaga. Se não houver, escreva *Não informado*.', user.id);
+    await send(client, jid, '╭─ 🎁 *Benefícios*\nEnvie os benefícios da vaga.\n╰─ Se não houver, escreva *Não informado*.', user.id);
     return;
   }
 
   if (user.onboarding_step === 'job_benefits') {
     user = await updateUser(user.id, { onboarding_step: 'job_contact', onboarding_data: { draftJob: { ...draft, benefits: body } } });
-    await send(client, jid, 'Como o candidato deve se candidatar?\n\nEx.: Enviar currículo para email, chamar no WhatsApp, ou escrever *Pelo bot*.', user.id);
+    await send(client, jid, '╭─ 📲 *Candidatura*\nComo o candidato deve se candidatar?\n\nEx.: enviar currículo por e-mail, chamar no WhatsApp ou escrever *Pelo bot*.\n╰─ Essa informação aparecerá para os candidatos.', user.id);
     return;
   }
 
