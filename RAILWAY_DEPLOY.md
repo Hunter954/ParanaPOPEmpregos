@@ -1,14 +1,15 @@
-# Deploy Railway — versão 1.0.4 502 fix
+# Deploy Railway — ParanáPOP Empregos
 
-1. Suba este projeto no GitHub.
-2. No Railway, conecte o repositório.
-3. Adicione PostgreSQL no mesmo projeto.
-4. No serviço do APP, configure apenas:
+Esta versão é **Baileys puro**, sem OpenWA, Chromium ou Puppeteer.
+
+## Variáveis mínimas
+
+No serviço do APP, deixe somente:
 
 ```env
 DATABASE_URL=${{Postgres.DATABASE_URL}}
 ADMIN_USER=admin
-ADMIN_PASSWORD=sua_senha_forte
+ADMIN_PASSWORD=troque_essa_senha
 SESSION_SECRET=uma_chave_grande_aleatoria
 BASE_URL=https://seu-app.up.railway.app
 NODE_ENV=production
@@ -17,8 +18,23 @@ WA_SESSION_ID=paranapop-empregos
 WA_START_ON_BOOT=false
 ```
 
-5. Remova `PORT` se você criou manualmente. Railway injeta essa variável sozinho.
-6. Remova todas variáveis antigas de OpenWA/Chromium/Puppeteer.
-7. Faça Redeploy.
+Pode apagar `PORT`, `WHATSAPP_ENGINE`, `WA_ENABLE_OPENWA`, `CHROME_PATH`, `PUPPETEER_EXECUTABLE_PATH` e todas as variáveis antigas de OpenWA.
 
-Acesse `/saude`. Se responder JSON, o servidor está online. Depois acesse `/admin` e vá em QR Code.
+## Como conferir
+
+Depois do deploy, abra:
+
+```text
+/healthz
+/saude
+```
+
+O log correto precisa mostrar:
+
+```text
+VERSAO DO PROJETO: 1.0.5 BAILEYS PURO SEM OPENWA PORTFIX
+Motor WhatsApp configurado: baileys
+WhatsApp aguardando início manual em /admin/qr.
+```
+
+Se o domínio principal ainda der 502, teste `/healthz`. Se `/healthz` abrir e `/` não, o problema é banco/sessão; se `/healthz` também der 502, o Railway ainda está rodando build antigo ou a porta do serviço está travada por variável antiga.

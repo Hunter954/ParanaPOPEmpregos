@@ -1,13 +1,22 @@
-# ParanáPOP Empregos Bot — Baileys puro 502 fix
+# ParanáPOP Empregos Bot
 
-Versão `1.0.4`. Esta versão usa somente Baileys. Não existe OpenWA no runtime, não usa Chromium e não usa Puppeteer.
+Versão `1.0.5`. Projeto com painel administrativo, PostgreSQL e WhatsApp via **Baileys puro**.
 
-## Variáveis obrigatórias no Railway
+Esta versão não usa OpenWA, Chromium nem Puppeteer.
+
+## Rotas úteis
+
+- `/healthz` — rota mínima para Railway.
+- `/saude` — diagnóstico completo do app.
+- `/admin` — painel administrativo.
+- `/admin/qr` — iniciar WhatsApp e ler QR Code.
+
+## Variáveis mínimas
 
 ```env
 DATABASE_URL=${{Postgres.DATABASE_URL}}
 ADMIN_USER=admin
-ADMIN_PASSWORD=sua_senha_forte
+ADMIN_PASSWORD=troque_essa_senha
 SESSION_SECRET=uma_chave_grande_aleatoria
 BASE_URL=https://seu-app.up.railway.app
 NODE_ENV=production
@@ -16,17 +25,4 @@ WA_SESSION_ID=paranapop-empregos
 WA_START_ON_BOOT=false
 ```
 
-Remova `PORT`, `WHATSAPP_ENGINE`, `CHROME_PATH`, `PUPPETEER_EXECUTABLE_PATH` e variáveis antigas de OpenWA.
-
-## Logs esperados
-
-```text
-ParanáPOP Empregos rodando na porta ...
-VERSAO DO PROJETO: 1.0.4 BAILEYS PURO SEM OPENWA 502 FIX
-Motor WhatsApp configurado: baileys
-WhatsApp aguardando início manual em /admin/qr.
-```
-
-## Healthcheck
-
-O endpoint `/saude` responde antes de operações pesadas de banco/WhatsApp para evitar erro 502 durante startup no Railway.
+Não configure `PORT` manualmente no Railway. Mesmo assim, esta versão escuta também nas portas `3000` e `8080` para reduzir risco de 502 quando sobram variáveis antigas.

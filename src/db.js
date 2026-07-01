@@ -2,6 +2,9 @@ const fs = require('fs');
 const path = require('path');
 const { Pool } = require('pg');
 
+let pool = null;
+let poolError = null;
+
 function buildConnectionStringFromPgVars() {
   const host = process.env.PGHOST;
   const port = process.env.PGPORT || '5432';
@@ -26,29 +29,61 @@ function resolveConnectionString() {
   );
 }
 
-const connectionString = resolveConnectionString();
-
-if (!connectionString) {
-  throw new Error([
+function databaseMissingMessage() {
+  return [
     'Banco PostgreSQL não configurado.',
-    'No Railway, adicione um serviço PostgreSQL e depois crie no serviço do app a variável:',
+    'No Railway, adicione um serviço PostgreSQL e crie no serviço do app:',
     'DATABASE_URL=${{Postgres.DATABASE_URL}}',
-    'Se o seu banco tiver outro nome no canvas do Railway, troque "Postgres" pelo nome exato do serviço.',
-    'Depois de salvar a variável, faça Redeploy.'
-  ].join('\n'));
+    'Se seu banco tiver outro nome no canvas, troque "Postgres" pelo nome exato do serviço.'
+  ].join('\n');
 }
 
-const shouldUseSsl =
-  ['require', 'true', '1', 'no-verify'].includes(String(process.env.PGSSLMODE || '').toLowerCase()) ||
-  /sslmode=(require|no-verify)/i.test(connectionString);
+function sslConfig(connectionString) {
+  const mode = String(process.env.PGSSLMODE || '').toLowerCase();
+  const sslRequested = ['require', 'true', '1', 'no-verify'].includes(mode) || /sslmode=(require|no-verify)/i.test(connectionString || '');
+  return sslRequested ? { rejectUnauthorized: false } : false;
+}
 
-const pool = new Pool({
-  connectionString,
-  ssl: shouldUseSsl ? { rejectUnauthorized: false } : false
-});
+function getPool() {
+  if (pool) return pool;
+
+  const connectionString = resolveConnectionString();
+  if (!connectionString) {
+    poolError = new Error(databaseMissingMessage());
+    throw poolError;
+  }
+
+  pool = new Pool({
+    connectionString,
+    ssl: sslConfig(connectionString),
+    max: Number(process.env.PG_POOL_MAX || 10),
+    idleTimeoutMillis: Number(process.env.PG_IDLE_TIMEOUT_MS || 30000),
+    connectionTimeoutMillis: Number(process.env.PG_CONNECTION_TIMEOUT_MS || 10000)
+  });
+
+  pool.on('error', (error) => {
+    poolError = error;
+    console.error('Erro inesperado no pool PostgreSQL:', error.message);
+  });
+
+  return pool;
+}
+
+function getSessionPool() {
+  // Mantido separado para o servidor poder cair para sessão em memória sem derrubar o app.
+  return getPool();
+}
+
+function getDatabaseStatus() {
+  return {
+    configured: Boolean(resolveConnectionString()),
+    poolCreated: Boolean(pool),
+    lastError: poolError ? poolError.message : null
+  };
+}
 
 async function query(text, params = []) {
-  return pool.query(text, params);
+  return getPool().query(text, params);
 }
 
 async function runMigrations() {
@@ -67,7 +102,7 @@ async function runMigrations() {
     if (already.rowCount > 0) continue;
 
     const sql = fs.readFileSync(path.join(migrationDir, file), 'utf8');
-    const client = await pool.connect();
+    const client = await getPool().connect();
     try {
       await client.query('BEGIN');
       await client.query(sql);
@@ -272,6 +307,14 @@ async function logMessage({ userId, whatsappJid, direction, body, raw }) {
   }
 }
 
+async function addAdminNote(userId, note) {
+  const result = await query(
+    `INSERT INTO admin_notes (user_id, note) VALUES ($1, $2) RETURNING *`,
+    [userId, note]
+  );
+  return result.rows[0];
+}
+
 async function getDashboardStats() {
   const result = await query(`
     SELECT
@@ -285,11 +328,13 @@ async function getDashboardStats() {
 }
 
 async function closePool() {
-  await pool.end();
+  if (pool) await pool.end();
 }
 
 module.exports = {
-  pool,
+  getPool,
+  getSessionPool,
+  getDatabaseStatus,
   query,
   runMigrations,
   closePool,
@@ -310,5 +355,6 @@ module.exports = {
   createApplication,
   listApplicationsForJob,
   logMessage,
+  addAdminNote,
   getDashboardStats
 };
