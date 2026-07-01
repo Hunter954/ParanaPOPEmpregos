@@ -1,90 +1,53 @@
-# Deploy no Railway — checklist rápido
+# Deploy no Railway — ParanáPOP Empregos Bot
 
-## 1. Banco PostgreSQL
+Esta versão é **Baileys puro**. Não usa OpenWA, Chromium nem Puppeteer.
 
-Se aparecer `DATABASE_URL não configurada` ou `ECONNREFUSED 127.0.0.1:5432`, o app está sem a URL do PostgreSQL.
+## Variáveis obrigatórias
 
-1. Abra seu projeto no Railway.
-2. Clique em **+ New** / **Create**.
-3. Adicione um banco **PostgreSQL**.
-4. Clique no serviço do app, não no banco.
-5. Abra **Variables**.
-6. Adicione a referência:
+No serviço do APP, deixe somente o necessário:
 
 ```env
 DATABASE_URL=${{Postgres.DATABASE_URL}}
-```
-
-Se o serviço do banco não se chamar `Postgres`, use o nome que aparece no canvas. Exemplo:
-
-```env
-DATABASE_URL=${{PostgreSQL.DATABASE_URL}}
-```
-
-## 2. Variáveis mínimas do app
-
-```env
-NODE_ENV=production
-PORT=3000
-BASE_URL=https://SEU-DOMINIO.up.railway.app
-SESSION_SECRET=troque-por-uma-chave-grande-e-segura
 ADMIN_USER=admin
-ADMIN_PASSWORD=troque-esta-senha
-RUN_MIGRATIONS=true
+ADMIN_PASSWORD=troque_esta_senha
+SESSION_SECRET=uma_chave_grande_aleatoria
+BASE_URL=https://seu-app.up.railway.app
+NODE_ENV=production
 ENABLE_WHATSAPP=true
 WA_SESSION_ID=paranapop-empregos
-WHATSAPP_ENGINE=baileys
-WA_ENABLE_OPENWA=false
 WA_START_ON_BOOT=false
-WA_ALLOW_BOOT_START=false
-WA_UNSAFE_START_ON_BOOT=false
-WA_AUTO_RECONNECT=true
-WA_RECONNECT_DELAY_MS=5000
-WA_MAX_LAUNCH_ATTEMPTS=2
-WA_RETRY_CLEAN_SESSION=true
 ```
 
-## 3. Como gerar o QR Code
+`PORT` é fornecido pelo Railway. Pode apagar `PORT` manual.
 
-Com `WA_START_ON_BOOT=false`, o deploy sobe primeiro e o WhatsApp só inicia quando você mandar pelo painel.
+## Apague variáveis antigas
 
-1. Faça **Redeploy** do app.
-2. Acesse `https://SEU-DOMINIO.up.railway.app/admin`.
-3. Entre com `ADMIN_USER` e `ADMIN_PASSWORD`.
-4. Vá em **QR Code**.
-5. Confirme que o motor atual está como **Baileys**.
-6. Clique em **Gerar/Iniciar**.
-7. Leia o QR com o WhatsApp comercial.
-8. Envie uma mensagem para o número e teste o fluxo.
-
-## 4. Sobre o erro `Waiting failed: 30000ms exceeded`
-
-Esse erro vem do Puppeteer/OpenWA esperando o WhatsApp Web liberar objetos internos da página. Nesta versão, o padrão foi alterado para `WHATSAPP_ENGINE=baileys`, que usa o protocolo WebSocket do WhatsApp Web e não depende de abrir o Chromium para gerar o QR.
-
-Se o log ainda mostrar `OpenWA`, provavelmente você ainda está com o deploy antigo. Nesta versão blindada, mesmo que exista `WHATSAPP_ENGINE=openwa`, o sistema força Baileys enquanto `WA_ENABLE_OPENWA=false`. Deixe assim no serviço do app:
+Apague se existirem:
 
 ```env
-WHATSAPP_ENGINE=baileys
-WA_ENABLE_OPENWA=false
-WA_START_ON_BOOT=false
-WA_ALLOW_BOOT_START=false
-WA_UNSAFE_START_ON_BOOT=false
+WHATSAPP_ENGINE
+WA_ENABLE_OPENWA
+CHROME_PATH
+PUPPETEER_EXECUTABLE_PATH
+WA_BROWSER_TIMEOUT_MS
+WA_DEBUG_WAIT_TIMEOUT_MS
+WA_PROTOCOL_TIMEOUT_MS
+WA_MAX_LAUNCH_ATTEMPTS
+WA_RETRY_CLEAN_SESSION
 ```
 
-Também remova ou deixe `false` qualquer variável antiga `WA_START_ON_BOOT=true`. Nesta versão, o início automático só acontece se as três variáveis estiverem como `true`: `WA_START_ON_BOOT`, `WA_ALLOW_BOOT_START` e `WA_UNSAFE_START_ON_BOOT`.
+## Log correto
 
-## 5. Se quiser insistir no OpenWA
+Depois do deploy correto, o log precisa mostrar:
 
-Use somente se realmente quiser testar OpenWA de novo:
-
-```env
-WHATSAPP_ENGINE=openwa
-WA_ENABLE_OPENWA=true
-CHROME_PATH=/usr/bin/chromium
-PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
-WA_DEBUG_WAIT_TIMEOUT_MS=120000
-WA_BROWSER_TIMEOUT_MS=120000
-WA_PROTOCOL_TIMEOUT_MS=120000
+```text
+VERSAO DO PROJETO: 1.0.3 BAILEYS PURO SEM OPENWA BUILD FIX
+Motor WhatsApp configurado: baileys
+WhatsApp aguardando início manual em /admin/qr.
 ```
 
-O projeto mantém OpenWA, mas o Railway deve usar Baileys se o OpenWA continuar travando no WhatsApp Web atual.
+Se aparecer `OpenWA`, `Version: 4.76.0` ou `Launching Browser`, o Railway ainda está rodando um deploy antigo.
+
+## Build
+
+Esta versão usa Dockerfile com `git`, `python3`, `make` e `g++` para evitar falha de build em dependências npm.

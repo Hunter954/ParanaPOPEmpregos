@@ -69,6 +69,7 @@ async function bootstrap() {
 
   app.listen(port, () => {
     console.log(`ParanáPOP Empregos rodando na porta ${port}`);
+    console.log('VERSAO DO PROJETO: 1.0.3 BAILEYS PURO SEM OPENWA BUILD FIX');
     console.log(`Motor WhatsApp configurado: ${getBotState().engine}`);
   });
 

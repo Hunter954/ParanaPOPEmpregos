@@ -1,3 +1,7 @@
+# ParanáPOP Empregos Bot — Baileys Puro
+
+Esta versão usa somente Baileys. Não existe OpenWA neste zip, então não deve aparecer `OpenWA`, `Version: 4.76.0`, `Launching Browser` nem erro de Puppeteer nos logs.
+
 # ParanáPOP Empregos Bot
 
 Projeto completo para um bot de WhatsApp comercial do **ParanáPOP Empregos**, com **Node.js/Express**, **PostgreSQL**, painel online para login, QR Code e gestão de candidatos, empresas, vagas e candidaturas.

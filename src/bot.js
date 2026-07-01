@@ -3,7 +3,6 @@ const path = require('path');
 const { Boom } = require('@hapi/boom');
 const { handleIncomingMessage } = require('./flows');
 
-let openWa = null;
 let client = null;
 let starting = false;
 let backgroundPromise = null;
@@ -13,7 +12,6 @@ let baileysSaveCreds = null;
 const state = {
   enabled: String(process.env.ENABLE_WHATSAPP || 'true') === 'true',
   sessionId: process.env.WA_SESSION_ID || 'paranapop-empregos',
-  // OpenWA fica bloqueado por padrão nesta versão para evitar o timeout do Railway.
   engine: 'baileys',
   ready: false,
   qr: null,
@@ -36,33 +34,9 @@ function intEnv(name, fallback) {
   return Number.isFinite(value) ? value : fallback;
 }
 
-function openWaAllowed() {
-  return boolEnv('WA_ENABLE_OPENWA', false) || boolEnv('WA_ALLOW_OPENWA', false);
-}
-
-function getEngine() {
-  const requested = String(process.env.WHATSAPP_ENGINE || state.engine || 'baileys').toLowerCase();
-  const wantsOpenWa = ['openwa', 'open-wa', 'wa-automate'].includes(requested);
-
-  if (wantsOpenWa && !openWaAllowed()) {
-    if (!state._openWaWarningPrinted) {
-      console.warn('WHATSAPP_ENGINE=openwa detectado, mas esta versão bloqueia OpenWA por padrão para evitar timeout no Railway. Usando Baileys. Para forçar OpenWA conscientemente, defina WA_ENABLE_OPENWA=true.');
-      state._openWaWarningPrinted = true;
-    }
-    return 'baileys';
-  }
-
-  if (wantsOpenWa) return 'openwa';
-  return 'baileys';
-}
-
 function sessionBaseDir() {
   const custom = process.env.WA_SESSION_DATA_PATH || '';
   return custom ? path.resolve(process.cwd(), custom) : process.cwd();
-}
-
-function sessionPath(...parts) {
-  return path.join(process.cwd(), ...parts);
 }
 
 async function removeIfExists(target) {
@@ -78,13 +52,8 @@ async function removeIfExists(target) {
 async function cleanSessionArtifacts() {
   const sessionId = state.sessionId;
   const baseDir = sessionBaseDir();
-
-  await removeIfExists(path.join(baseDir, `_IGNORE_${sessionId}`));
-  await removeIfExists(path.join(baseDir, `${sessionId}.data.json`));
   await removeIfExists(path.join(baseDir, `baileys-${sessionId}`));
-  await removeIfExists(sessionPath(`_IGNORE_${sessionId}`));
-  await removeIfExists(sessionPath(`${sessionId}.data.json`));
-  await removeIfExists(sessionPath(`baileys-${sessionId}`));
+  await removeIfExists(path.join(process.cwd(), `baileys-${sessionId}`));
 }
 
 function normalizeToBaileysJid(jid) {
@@ -95,24 +64,7 @@ function normalizeToBaileysJid(jid) {
   return phone ? `${phone}@s.whatsapp.net` : value;
 }
 
-function normalizeToOpenWaJid(jid) {
-  const value = String(jid || '');
-  if (!value) return value;
-  if (value.endsWith('@c.us') || value.endsWith('@g.us')) return value;
-  const phone = value.replace(/@.+$/, '').replace(/\D/g, '');
-  return phone ? `${phone}@c.us` : value;
-}
-
 async function stopBot() {
-  try {
-    if (client) {
-      if (typeof client.kill === 'function') await client.kill();
-      else if (typeof client.close === 'function') await client.close();
-    }
-  } catch (error) {
-    console.warn('Erro ao encerrar OpenWA:', error.message);
-  }
-
   try {
     if (baileysSocket) {
       baileysSocket.ev.removeAllListeners('connection.update');
@@ -135,115 +87,6 @@ async function stopBot() {
     state.qr = null;
     state.status = 'WhatsApp parado';
   }
-}
-
-function setupOpenWaQrListener() {
-  if (!openWa?.ev || setupOpenWaQrListener.done) return;
-  setupOpenWaQrListener.done = true;
-
-  openWa.ev.on('qr.**', async (qrcode, sessionId) => {
-    if (sessionId && sessionId !== state.sessionId) return;
-    state.qr = qrcode;
-    state.lastQrAt = new Date();
-    state.ready = false;
-    state.status = 'Aguardando leitura do QR Code';
-    state.lastError = null;
-  });
-}
-
-function getOpenWaConfig() {
-  const chromePath = process.env.CHROME_PATH || process.env.PUPPETEER_EXECUTABLE_PATH || undefined;
-  const customUserAgent = process.env.WA_CUSTOM_USER_AGENT ||
-    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
-
-  return {
-    sessionId: state.sessionId,
-    sessionDataPath: process.env.WA_SESSION_DATA_PATH || undefined,
-    headless: true,
-    useChrome: true,
-    executablePath: chromePath,
-    customUserAgent,
-    qrTimeout: intEnv('WA_QR_TIMEOUT', 0),
-    authTimeout: intEnv('WA_AUTH_TIMEOUT', 0),
-    qrLogSkip: boolEnv('WA_QR_LOG_SKIP', true),
-    killProcessOnTimeout: false,
-    killProcessOnBan: false,
-    multiDevice: boolEnv('WA_MULTI_DEVICE', true),
-    cacheEnabled: boolEnv('WA_CACHE_ENABLED', false),
-    autoRefresh: boolEnv('WA_AUTO_REFRESH', true),
-    blockCrashLogs: true,
-    blockAssets: false,
-    skipUpdateCheck: true,
-    disableSpins: true,
-    logDebugInfoAsObject: true,
-    screenshotOnInitializationBrowserError: boolEnv('WA_SCREENSHOT_ON_ERROR', true),
-    timeout: intEnv('WA_BROWSER_TIMEOUT_MS', 120000),
-    protocolTimeout: intEnv('WA_PROTOCOL_TIMEOUT_MS', 120000),
-    chromiumArgs: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-gpu',
-      '--disable-features=site-per-process',
-      '--disable-web-security',
-      '--no-first-run',
-      '--no-default-browser-check',
-      '--disable-extensions',
-      '--window-size=1440,900',
-      '--disable-background-timer-throttling',
-      '--disable-backgrounding-occluded-windows',
-      '--disable-renderer-backgrounding'
-    ]
-  };
-}
-
-async function startOpenWa() {
-  openWa = require('@open-wa/wa-automate');
-  setupOpenWaQrListener();
-
-  const openWaClient = await openWa.create({
-    ...getOpenWaConfig(),
-    restartOnCrash: async () => {
-      state.ready = false;
-      state.status = 'Reiniciando depois de falha';
-      client = null;
-      starting = false;
-      return startBot();
-    }
-  });
-
-  client = openWaClient;
-  state.ready = true;
-  state.qr = null;
-  state.status = 'Conectado via OpenWA';
-  state.connectedAt = new Date();
-  state.lastError = null;
-
-  client.onMessage(async (message) => {
-    try {
-      await handleIncomingMessage(client, message);
-    } catch (error) {
-      console.error('Erro no fluxo do bot:', error);
-      try {
-        if (message?.from) await client.sendText(message.from, 'Tive um erro interno ao processar sua mensagem. Envie *MENU* para tentar novamente.');
-      } catch (sendError) {
-        console.error('Erro ao avisar usuário:', sendError.message);
-      }
-    }
-  });
-
-  if (typeof client.onStateChanged === 'function') {
-    client.onStateChanged((waState) => {
-      state.status = `WhatsApp/OpenWA: ${waState}`;
-      if (String(waState).toUpperCase() === 'CONNECTED') {
-        state.ready = true;
-        state.qr = null;
-        state.connectedAt = new Date();
-      }
-    });
-  }
-
-  return client;
 }
 
 function getBaileysAuthDir() {
@@ -376,9 +219,9 @@ async function startBot(options = {}) {
   starting = true;
   state.startedAt = new Date();
   state.launchAttempts += 1;
-  state.engine = getEngine();
-  console.log(`Motor WhatsApp selecionado: ${state.engine}`);
-  state.status = `Iniciando WhatsApp (${state.engine})`;
+  state.engine = 'baileys';
+  console.log('Motor WhatsApp selecionado: baileys-puro-sem-openwa');
+  state.status = 'Iniciando WhatsApp (Baileys)';
   state.lastError = null;
 
   if (options.cleanSession || boolEnv('WA_CLEAN_SESSION_ON_START', false)) {
@@ -387,9 +230,6 @@ async function startBot(options = {}) {
 
   backgroundPromise = (async () => {
     try {
-      if (state.engine === 'openwa') {
-        return await startOpenWa();
-      }
       return await startBaileys();
     } catch (error) {
       state.ready = false;
@@ -397,7 +237,7 @@ async function startBot(options = {}) {
       state.lastError = error.message;
       client = null;
       baileysSocket = null;
-      console.error('Erro ao iniciar WhatsApp:', error);
+      console.error('Erro ao iniciar WhatsApp/Baileys:', error);
 
       if (boolEnv('WA_RETRY_CLEAN_SESSION', true) && state.launchAttempts < intEnv('WA_MAX_LAUNCH_ATTEMPTS', 2)) {
         state.status = 'Tentando novamente com sessão limpa';
@@ -431,11 +271,9 @@ function getBotClient() {
 }
 
 function getBotState() {
-  const publicState = { ...state };
-  delete publicState._openWaWarningPrinted;
   return {
-    ...publicState,
-    engine: getEngine(),
+    ...state,
+    engine: 'baileys',
     starting,
     qrAvailable: Boolean(state.qr),
     uptimeSeconds: state.startedAt ? Math.round((Date.now() - new Date(state.startedAt).getTime()) / 1000) : 0
@@ -444,8 +282,7 @@ function getBotState() {
 
 async function sendText(to, text) {
   if (!client) throw new Error('Bot ainda não conectado. Abra /admin/qr e conecte o WhatsApp primeiro.');
-  const target = getEngine() === 'openwa' ? normalizeToOpenWaJid(to) : normalizeToBaileysJid(to);
-  return client.sendText(target, text);
+  return client.sendText(normalizeToBaileysJid(to), text);
 }
 
 module.exports = {
