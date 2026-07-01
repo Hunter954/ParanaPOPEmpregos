@@ -5,7 +5,7 @@ const PgSession = require('connect-pg-simple')(session);
 const helmet = require('helmet');
 const path = require('path');
 const { pool, runMigrations } = require('./db');
-const { startBotInBackground } = require('./bot');
+const { startBotInBackground, getBotState } = require('./bot');
 
 const adminRoutes = require('./routes/admin');
 const publicRoutes = require('./routes/public');
@@ -69,16 +69,21 @@ async function bootstrap() {
 
   app.listen(port, () => {
     console.log(`ParanáPOP Empregos rodando na porta ${port}`);
+    console.log(`Motor WhatsApp configurado: ${getBotState().engine}`);
   });
 
   const startOnBoot = String(process.env.WA_START_ON_BOOT || 'false') === 'true' &&
-    String(process.env.WA_ALLOW_BOOT_START || 'false') === 'true';
+    String(process.env.WA_ALLOW_BOOT_START || 'false') === 'true' &&
+    String(process.env.WA_UNSAFE_START_ON_BOOT || 'false') === 'true';
 
   if (startOnBoot) {
-    // Inicia sem bloquear o painel. Em produção, é melhor iniciar pelo /admin/qr.
+    // Só inicia automaticamente quando todas as flags estiverem explícitas.
     startBotInBackground();
   } else {
-    console.log('WhatsApp aguardando início manual em /admin/qr. Para iniciar no boot, defina WA_START_ON_BOOT=true e WA_ALLOW_BOOT_START=true.');
+    if (String(process.env.WA_START_ON_BOOT || 'false') === 'true') {
+      console.warn('WA_START_ON_BOOT=true detectado, mas o início automático foi bloqueado por segurança. Use o painel /admin/qr ou defina também WA_ALLOW_BOOT_START=true e WA_UNSAFE_START_ON_BOOT=true.');
+    }
+    console.log('WhatsApp aguardando início manual em /admin/qr.');
   }
 }
 

@@ -1,7 +1,7 @@
 {
   "name": "paranapop-empregos-bot",
-  "version": "1.0.0",
-  "description": "Bot WhatsApp ParanáPOP Empregos com painel admin, PostgreSQL, Baileys e OpenWA opcional.",
+  "version": "1.0.1",
+  "description": "Bot WhatsApp ParanáPOP Empregos com painel admin, PostgreSQL e Baileys blindado para Railway.",
   "main": "src/server.js",
   "engines": {
     "node": ">=20.0.0"

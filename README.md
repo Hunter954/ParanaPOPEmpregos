@@ -4,21 +4,25 @@ Projeto completo para um bot de WhatsApp comercial do **ParanáPOP Empregos**, c
 
 ## Atualização desta versão
 
-Esta versão mantém o **OpenWA** instalado, mas adiciona o motor **Baileys** como padrão recomendado para Railway.
+Esta versão mantém o **OpenWA** instalado, mas deixa o motor **Baileys blindado como padrão no Railway**. Mesmo se uma variável antiga `WHATSAPP_ENGINE=openwa` continuar salva, o projeto força Baileys enquanto `WA_ENABLE_OPENWA=false`.
 
 Motivo: o OpenWA 4.76.0 pode travar no WhatsApp Web atual com o erro `Waiting failed: 30000ms exceeded` logo depois de `Page loaded`. Com `WHATSAPP_ENGINE=baileys`, o QR Code é gerado por WebSocket, sem depender do Chromium/Puppeteer.
 
-Para usar OpenWA mesmo assim, basta definir:
+Para usar OpenWA mesmo assim, defina as duas variáveis:
 
 ```env
 WHATSAPP_ENGINE=openwa
+WA_ENABLE_OPENWA=true
 ```
 
 Para o Railway, o recomendado é:
 
 ```env
 WHATSAPP_ENGINE=baileys
+WA_ENABLE_OPENWA=false
 WA_START_ON_BOOT=false
+WA_ALLOW_BOOT_START=false
+WA_UNSAFE_START_ON_BOOT=false
 ```
 
 ## O que já vem pronto
@@ -91,7 +95,10 @@ RUN_MIGRATIONS=true
 ENABLE_WHATSAPP=true
 WA_SESSION_ID=paranapop-empregos
 WHATSAPP_ENGINE=baileys
+WA_ENABLE_OPENWA=false
 WA_START_ON_BOOT=false
+WA_ALLOW_BOOT_START=false
+WA_UNSAFE_START_ON_BOOT=false
 WA_AUTO_RECONNECT=true
 WA_RECONNECT_DELAY_MS=5000
 WA_MAX_LAUNCH_ATTEMPTS=2
@@ -117,6 +124,7 @@ O OpenWA continua disponível. Para ativar:
 
 ```env
 WHATSAPP_ENGINE=openwa
+WA_ENABLE_OPENWA=true
 CHROME_PATH=/usr/bin/chromium
 PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 WA_DEBUG_WAIT_TIMEOUT_MS=120000

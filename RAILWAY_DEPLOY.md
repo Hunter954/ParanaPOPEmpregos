@@ -34,7 +34,10 @@ RUN_MIGRATIONS=true
 ENABLE_WHATSAPP=true
 WA_SESSION_ID=paranapop-empregos
 WHATSAPP_ENGINE=baileys
+WA_ENABLE_OPENWA=false
 WA_START_ON_BOOT=false
+WA_ALLOW_BOOT_START=false
+WA_UNSAFE_START_ON_BOOT=false
 WA_AUTO_RECONNECT=true
 WA_RECONNECT_DELAY_MS=5000
 WA_MAX_LAUNCH_ATTEMPTS=2
@@ -58,21 +61,25 @@ Com `WA_START_ON_BOOT=false`, o deploy sobe primeiro e o WhatsApp só inicia qua
 
 Esse erro vem do Puppeteer/OpenWA esperando o WhatsApp Web liberar objetos internos da página. Nesta versão, o padrão foi alterado para `WHATSAPP_ENGINE=baileys`, que usa o protocolo WebSocket do WhatsApp Web e não depende de abrir o Chromium para gerar o QR.
 
-Se o log ainda mostrar `OpenWA`, revise as variáveis do serviço do app e deixe:
+Se o log ainda mostrar `OpenWA`, provavelmente você ainda está com o deploy antigo. Nesta versão blindada, mesmo que exista `WHATSAPP_ENGINE=openwa`, o sistema força Baileys enquanto `WA_ENABLE_OPENWA=false`. Deixe assim no serviço do app:
 
 ```env
 WHATSAPP_ENGINE=baileys
+WA_ENABLE_OPENWA=false
 WA_START_ON_BOOT=false
+WA_ALLOW_BOOT_START=false
+WA_UNSAFE_START_ON_BOOT=false
 ```
 
-Também remova ou deixe `false` qualquer variável antiga `WA_START_ON_BOOT=true`.
+Também remova ou deixe `false` qualquer variável antiga `WA_START_ON_BOOT=true`. Nesta versão, o início automático só acontece se as três variáveis estiverem como `true`: `WA_START_ON_BOOT`, `WA_ALLOW_BOOT_START` e `WA_UNSAFE_START_ON_BOOT`.
 
 ## 5. Se quiser insistir no OpenWA
 
-Use:
+Use somente se realmente quiser testar OpenWA de novo:
 
 ```env
 WHATSAPP_ENGINE=openwa
+WA_ENABLE_OPENWA=true
 CHROME_PATH=/usr/bin/chromium
 PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 WA_DEBUG_WAIT_TIMEOUT_MS=120000

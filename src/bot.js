@@ -13,7 +13,8 @@ let baileysSaveCreds = null;
 const state = {
   enabled: String(process.env.ENABLE_WHATSAPP || 'true') === 'true',
   sessionId: process.env.WA_SESSION_ID || 'paranapop-empregos',
-  engine: String(process.env.WHATSAPP_ENGINE || 'baileys').toLowerCase(),
+  // OpenWA fica bloqueado por padrão nesta versão para evitar o timeout do Railway.
+  engine: 'baileys',
   ready: false,
   qr: null,
   status: 'Aguardando início manual pelo painel',
@@ -35,9 +36,23 @@ function intEnv(name, fallback) {
   return Number.isFinite(value) ? value : fallback;
 }
 
+function openWaAllowed() {
+  return boolEnv('WA_ENABLE_OPENWA', false) || boolEnv('WA_ALLOW_OPENWA', false);
+}
+
 function getEngine() {
-  const engine = String(process.env.WHATSAPP_ENGINE || state.engine || 'baileys').toLowerCase();
-  if (['openwa', 'open-wa', 'wa-automate'].includes(engine)) return 'openwa';
+  const requested = String(process.env.WHATSAPP_ENGINE || state.engine || 'baileys').toLowerCase();
+  const wantsOpenWa = ['openwa', 'open-wa', 'wa-automate'].includes(requested);
+
+  if (wantsOpenWa && !openWaAllowed()) {
+    if (!state._openWaWarningPrinted) {
+      console.warn('WHATSAPP_ENGINE=openwa detectado, mas esta versão bloqueia OpenWA por padrão para evitar timeout no Railway. Usando Baileys. Para forçar OpenWA conscientemente, defina WA_ENABLE_OPENWA=true.');
+      state._openWaWarningPrinted = true;
+    }
+    return 'baileys';
+  }
+
+  if (wantsOpenWa) return 'openwa';
   return 'baileys';
 }
 
@@ -362,6 +377,7 @@ async function startBot(options = {}) {
   state.startedAt = new Date();
   state.launchAttempts += 1;
   state.engine = getEngine();
+  console.log(`Motor WhatsApp selecionado: ${state.engine}`);
   state.status = `Iniciando WhatsApp (${state.engine})`;
   state.lastError = null;
 
@@ -415,8 +431,10 @@ function getBotClient() {
 }
 
 function getBotState() {
+  const publicState = { ...state };
+  delete publicState._openWaWarningPrinted;
   return {
-    ...state,
+    ...publicState,
     engine: getEngine(),
     starting,
     qrAvailable: Boolean(state.qr),
