@@ -14,6 +14,9 @@ const webhookRoutes = require('./routes/webhooks');
 const app = express();
 const port = Number(process.env.PORT || 3000);
 
+let migrationsReady = false;
+let migrationsError = null;
+
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 app.set('trust proxy', 1);
@@ -21,6 +24,21 @@ app.set('trust proxy', 1);
 app.use(helmet({
   contentSecurityPolicy: false
 }));
+
+// Rotas de saúde antes do session/db pesado. Isso evita 502 em healthcheck do Railway.
+app.get('/saude', (req, res) => {
+  res.json({
+    ok: true,
+    service: 'ParanáPOP Empregos Bot',
+    version: '1.0.4-baileys-puro-502fix',
+    whatsappEngine: getBotState().engine,
+    migrationsReady,
+    migrationsError: migrationsError ? migrationsError.message : null,
+    time: new Date().toISOString()
+  });
+});
+app.get('/healthz', (req, res) => res.status(200).send('ok'));
+
 app.use(express.urlencoded({ extended: true, limit: '2mb' }));
 app.use(express.json({ limit: '2mb' }));
 app.use('/public', express.static(path.join(__dirname, 'public')));
@@ -46,6 +64,8 @@ app.use(session({
 app.use((req, res, next) => {
   res.locals.currentPath = req.path;
   res.locals.adminUser = req.session?.adminUser;
+  res.locals.migrationsReady = migrationsReady;
+  res.locals.migrationsError = migrationsError;
   next();
 });
 
@@ -62,23 +82,24 @@ app.use((error, req, res, next) => {
   res.status(500).send(process.env.NODE_ENV === 'production' ? 'Erro interno.' : `<pre>${error.stack}</pre>`);
 });
 
-async function bootstrap() {
-  if (String(process.env.RUN_MIGRATIONS || 'true') === 'true') {
-    await runMigrations();
+async function runStartupTasks() {
+  try {
+    if (String(process.env.RUN_MIGRATIONS || 'true') === 'true') {
+      await runMigrations();
+    }
+    migrationsReady = true;
+    console.log('Migrations prontas.');
+  } catch (error) {
+    migrationsReady = false;
+    migrationsError = error;
+    console.error('Falha nas migrations, mas o servidor continuará online para evitar 502:', error);
   }
-
-  app.listen(port, () => {
-    console.log(`ParanáPOP Empregos rodando na porta ${port}`);
-    console.log('VERSAO DO PROJETO: 1.0.3 BAILEYS PURO SEM OPENWA BUILD FIX');
-    console.log(`Motor WhatsApp configurado: ${getBotState().engine}`);
-  });
 
   const startOnBoot = String(process.env.WA_START_ON_BOOT || 'false') === 'true' &&
     String(process.env.WA_ALLOW_BOOT_START || 'false') === 'true' &&
     String(process.env.WA_UNSAFE_START_ON_BOOT || 'false') === 'true';
 
   if (startOnBoot) {
-    // Só inicia automaticamente quando todas as flags estiverem explícitas.
     startBotInBackground();
   } else {
     if (String(process.env.WA_START_ON_BOOT || 'false') === 'true') {
@@ -88,7 +109,21 @@ async function bootstrap() {
   }
 }
 
-bootstrap().catch((error) => {
-  console.error('Falha crítica ao iniciar aplicação:', error);
-  process.exit(1);
+function bootstrap() {
+  app.listen(port, '0.0.0.0', () => {
+    console.log(`ParanáPOP Empregos rodando na porta ${port}`);
+    console.log('VERSAO DO PROJETO: 1.0.4 BAILEYS PURO SEM OPENWA 502 FIX');
+    console.log(`Motor WhatsApp configurado: ${getBotState().engine}`);
+    runStartupTasks();
+  });
+}
+
+process.on('unhandledRejection', (error) => {
+  console.error('Unhandled rejection capturada:', error);
 });
+
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught exception capturada:', error);
+});
+
+bootstrap();
