@@ -1,28 +1,28 @@
 # ParanáPOP Empregos Bot
 
-Versão `1.0.5`. Projeto com painel administrativo, PostgreSQL e WhatsApp via **Baileys puro**.
+Versão 1.0.6: Baileys puro, sem OpenWA, sem Chromium e com inicialização automática do WhatsApp em segundo plano.
 
-Esta versão não usa OpenWA, Chromium nem Puppeteer.
-
-## Rotas úteis
-
-- `/healthz` — rota mínima para Railway.
-- `/saude` — diagnóstico completo do app.
-- `/admin` — painel administrativo.
-- `/admin/qr` — iniciar WhatsApp e ler QR Code.
-
-## Variáveis mínimas
+## Variáveis mínimas no Railway
 
 ```env
 DATABASE_URL=${{Postgres.DATABASE_URL}}
 ADMIN_USER=admin
-ADMIN_PASSWORD=troque_essa_senha
+ADMIN_PASSWORD=sua_senha
 SESSION_SECRET=uma_chave_grande_aleatoria
 BASE_URL=https://seu-app.up.railway.app
 NODE_ENV=production
 ENABLE_WHATSAPP=true
 WA_SESSION_ID=paranapop-empregos
-WA_START_ON_BOOT=false
 ```
 
-Não configure `PORT` manualmente no Railway. Mesmo assim, esta versão escuta também nas portas `3000` e `8080` para reduzir risco de 502 quando sobram variáveis antigas.
+Não precisa de OpenWA, Puppeteer, Chrome ou WHATSAPP_ENGINE.
+
+## Teste
+
+1. Acesse `/healthz`. Deve responder `ok`.
+2. Acesse `/admin/qr`.
+3. Escaneie o QR se aparecer.
+4. Espere aparecer conectado.
+5. Envie `olá` para o número.
+
+Se não responder, olhe `/admin/qr`: agora a tela mostra a última mensagem recebida e a última resposta enviada.

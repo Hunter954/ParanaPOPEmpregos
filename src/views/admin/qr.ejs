@@ -21,6 +21,12 @@
   <div class="status <%= bot.ready ? 'ok' : 'warn' %>"><%= bot.status %></div>
   <p>Motor atual: <strong>Baileys puro</strong></p>
   <p>Tentativas de inicialização: <strong><%= bot.launchAttempts || 0 %></strong></p>
+  <% if (bot.lastInboundAt) { %>
+    <p>Última mensagem recebida: <strong><%= bot.lastInboundPreview %></strong><br><span class="muted"><%= bot.lastInboundFrom %> em <%= new Date(bot.lastInboundAt).toLocaleString('pt-BR') %></span></p>
+  <% } %>
+  <% if (bot.lastOutboundAt) { %>
+    <p>Última resposta enviada: <strong><%= new Date(bot.lastOutboundAt).toLocaleString('pt-BR') %></strong></p>
+  <% } %>
 
   <% if (bot.qr) { %>
     <img class="qr" src="<%= bot.qr %>" alt="QR Code WhatsApp">
@@ -33,7 +39,7 @@
     <p>Atualize esta página em alguns segundos. O QR aparece aqui assim que o WhatsApp liberar.</p>
   <% } else { %>
     <h2>QR ainda não disponível</h2>
-    <p>Clique em “Gerar/Iniciar”. Se aparecer timeout, clique em “Limpar sessão e tentar de novo”.</p>
+    <p>O WhatsApp inicia automaticamente em segundo plano. Se o QR não aparecer, clique em “Gerar/Iniciar”. Depois de aparecer “WhatsApp conectado”, envie <strong>olá</strong> para testar.</p>
   <% } %>
 
   <% if (bot.lastError) { %>

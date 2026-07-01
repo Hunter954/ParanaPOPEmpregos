@@ -1,40 +1,40 @@
-# Deploy Railway — ParanáPOP Empregos
+# Deploy Railway - ParanáPOP Empregos
 
-Esta versão é **Baileys puro**, sem OpenWA, Chromium ou Puppeteer.
+Esta versão usa Baileys puro. Não usa OpenWA, Chromium ou Puppeteer.
 
-## Variáveis mínimas
-
-No serviço do APP, deixe somente:
+## Variáveis necessárias
 
 ```env
 DATABASE_URL=${{Postgres.DATABASE_URL}}
 ADMIN_USER=admin
-ADMIN_PASSWORD=troque_essa_senha
+ADMIN_PASSWORD=sua_senha
 SESSION_SECRET=uma_chave_grande_aleatoria
 BASE_URL=https://seu-app.up.railway.app
 NODE_ENV=production
 ENABLE_WHATSAPP=true
 WA_SESSION_ID=paranapop-empregos
-WA_START_ON_BOOT=false
 ```
 
-Pode apagar `PORT`, `WHATSAPP_ENGINE`, `WA_ENABLE_OPENWA`, `CHROME_PATH`, `PUPPETEER_EXECUTABLE_PATH` e todas as variáveis antigas de OpenWA.
+Apague, se existirem:
 
-## Como conferir
-
-Depois do deploy, abra:
-
-```text
-/healthz
-/saude
+```env
+PORT
+WHATSAPP_ENGINE
+WA_ENABLE_OPENWA
+CHROME_PATH
+PUPPETEER_EXECUTABLE_PATH
+WA_BROWSER_TIMEOUT_MS
+WA_DEBUG_WAIT_TIMEOUT_MS
+WA_PROTOCOL_TIMEOUT_MS
+WA_MAX_LAUNCH_ATTEMPTS
+WA_RETRY_CLEAN_SESSION
+WA_START_ON_BOOT
 ```
 
-O log correto precisa mostrar:
+## Como validar
 
-```text
-VERSAO DO PROJETO: 1.0.5 BAILEYS PURO SEM OPENWA PORTFIX
-Motor WhatsApp configurado: baileys
-WhatsApp aguardando início manual em /admin/qr.
-```
+- `/healthz` precisa responder `ok`.
+- `/saude` mostra status do WhatsApp e banco.
+- `/admin/qr` mostra QR, conectado, última mensagem recebida e última resposta enviada.
 
-Se o domínio principal ainda der 502, teste `/healthz`. Se `/healthz` abrir e `/` não, o problema é banco/sessão; se `/healthz` também der 502, o Railway ainda está rodando build antigo ou a porta do serviço está travada por variável antiga.
+O WhatsApp inicia automaticamente alguns segundos depois que o servidor sobe.

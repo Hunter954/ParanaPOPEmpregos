@@ -13,7 +13,7 @@ const publicRoutes = require('./routes/public');
 const webhookRoutes = require('./routes/webhooks');
 
 const app = express();
-const APP_VERSION = '1.0.5-baileys-puro-portfix';
+const APP_VERSION = '1.0.6-baileys-auto-resposta-fix';
 
 let migrationsReady = false;
 let migrationsError = null;
@@ -153,17 +153,21 @@ async function runStartupTasks() {
     console.error('Falha nas migrations, mas o servidor continuará online para evitar 502:', error.message);
   }
 
-  const startOnBoot = toBool(process.env.WA_START_ON_BOOT, false) &&
-    toBool(process.env.WA_ALLOW_BOOT_START, false) &&
-    toBool(process.env.WA_UNSAFE_START_ON_BOOT, false);
+  const whatsappEnabled = toBool(process.env.ENABLE_WHATSAPP, true);
+  const disableAutoStart = toBool(process.env.WA_DISABLE_AUTO_START, false);
 
-  if (startOnBoot) {
-    startBotInBackground();
+  if (whatsappEnabled && !disableAutoStart) {
+    const delayMs = Number(process.env.WA_BOOT_DELAY_MS || 3500);
+    console.log(`WhatsApp será iniciado automaticamente em segundo plano em ${delayMs}ms.`);
+    setTimeout(() => {
+      try {
+        startBotInBackground();
+      } catch (error) {
+        console.error('Falha ao iniciar WhatsApp em segundo plano:', error);
+      }
+    }, delayMs);
   } else {
-    if (toBool(process.env.WA_START_ON_BOOT, false)) {
-      console.warn('WA_START_ON_BOOT=true detectado, mas início automático bloqueado. Use /admin/qr para iniciar.');
-    }
-    console.log('WhatsApp aguardando início manual em /admin/qr.');
+    console.log('WhatsApp não iniciado automaticamente. Use /admin/qr para iniciar.');
   }
 }
 
@@ -179,7 +183,7 @@ function listenOnPort(port, primary = false) {
   server.listen(port, '0.0.0.0', () => {
     console.log(`ParanáPOP Empregos ouvindo em 0.0.0.0:${port}${primary ? ' (principal)' : ''}`);
     if (primary) {
-      console.log('VERSAO DO PROJETO: 1.0.5 BAILEYS PURO SEM OPENWA PORTFIX');
+      console.log('VERSAO DO PROJETO: 1.0.6 BAILEYS AUTO RESPOSTA FIX');
       console.log(`Motor WhatsApp configurado: ${getBotState().engine}`);
       console.log(`Session store: ${sessionStoreMode}`);
       runStartupTasks();

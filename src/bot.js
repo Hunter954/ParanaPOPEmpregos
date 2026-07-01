@@ -20,7 +20,11 @@ const state = {
   startedAt: null,
   connectedAt: null,
   launchAttempts: 0,
-  lastQrAt: null
+  lastQrAt: null,
+  lastInboundAt: null,
+  lastInboundFrom: null,
+  lastInboundPreview: null,
+  lastOutboundAt: null
 };
 
 function boolEnv(name, fallback) {
@@ -94,15 +98,46 @@ function getBaileysAuthDir() {
   return path.join(baseDir, `baileys-${state.sessionId}`);
 }
 
+function unwrapMessageContent(content) {
+  let current = content || {};
+  for (let i = 0; i < 5; i += 1) {
+    if (current.ephemeralMessage?.message) {
+      current = current.ephemeralMessage.message;
+      continue;
+    }
+    if (current.viewOnceMessage?.message) {
+      current = current.viewOnceMessage.message;
+      continue;
+    }
+    if (current.viewOnceMessageV2?.message) {
+      current = current.viewOnceMessageV2.message;
+      continue;
+    }
+    if (current.documentWithCaptionMessage?.message) {
+      current = current.documentWithCaptionMessage.message;
+      continue;
+    }
+    break;
+  }
+  return current;
+}
+
 function getMessageBody(message) {
-  const content = message?.message || {};
+  const content = unwrapMessageContent(message?.message || {});
+  const buttonText = content.buttonsResponseMessage?.selectedButtonId ||
+    content.buttonsResponseMessage?.selectedDisplayText ||
+    content.templateButtonReplyMessage?.selectedId ||
+    content.interactiveResponseMessage?.body?.text ||
+    '';
+
   return (
     content.conversation ||
     content.extendedTextMessage?.text ||
     content.imageMessage?.caption ||
     content.videoMessage?.caption ||
+    content.documentMessage?.caption ||
     content.buttonsResponseMessage?.selectedButtonId ||
-    content.buttonsResponseMessage?.selectedDisplayText ||
+    buttonText ||
     content.listResponseMessage?.singleSelectReply?.selectedRowId ||
     content.listResponseMessage?.title ||
     content.templateButtonReplyMessage?.selectedId ||
@@ -142,7 +177,10 @@ async function startBaileys() {
   baileysSocket = sock;
   client = {
     engine: 'baileys',
-    sendText: async (jid, text) => sock.sendMessage(normalizeToBaileysJid(jid), { text })
+    sendText: async (jid, text) => {
+      state.lastOutboundAt = new Date();
+      return sock.sendMessage(normalizeToBaileysJid(jid), { text });
+    }
   };
 
   sock.ev.on('creds.update', baileysSaveCreds);
@@ -156,6 +194,7 @@ async function startBaileys() {
       state.ready = false;
       state.status = 'Aguardando leitura do QR Code';
       state.lastError = null;
+      console.log('[WhatsApp] QR Code gerado. Abra /admin/qr para escanear.');
     }
 
     if (connection === 'connecting') {
@@ -168,6 +207,7 @@ async function startBaileys() {
       state.status = 'Conectado via Baileys';
       state.connectedAt = new Date();
       state.lastError = null;
+      console.log('[WhatsApp] Conectado via Baileys. Bot pronto para responder.');
     }
 
     if (connection === 'close') {
@@ -176,6 +216,7 @@ async function startBaileys() {
       const shouldReconnect = reason !== DisconnectReason.loggedOut && boolEnv('WA_AUTO_RECONNECT', true);
       state.status = shouldReconnect ? 'Conexão caiu, tentando reconectar' : 'WhatsApp desconectado';
       state.lastError = lastDisconnect?.error?.message || null;
+      console.warn('[WhatsApp] Conexão fechada:', state.lastError || reason || 'sem detalhe');
       baileysSocket = null;
       client = null;
       if (shouldReconnect) {
@@ -184,17 +225,30 @@ async function startBaileys() {
     }
   });
 
-  sock.ev.on('messages.upsert', async ({ messages }) => {
+  sock.ev.on('messages.upsert', async ({ messages, type }) => {
     for (const msg of messages || []) {
       try {
         const from = msg.key?.remoteJid;
         const body = getMessageBody(msg);
+        const fromMe = Boolean(msg.key?.fromMe);
+        const isGroup = String(from || '').endsWith('@g.us');
+        const isStatus = String(from || '') === 'status@broadcast';
+
+        if (!from || fromMe || isGroup || isStatus) {
+          continue;
+        }
+
+        state.lastInboundAt = new Date();
+        state.lastInboundFrom = from;
+        state.lastInboundPreview = body ? String(body).slice(0, 80) : '[mensagem sem texto]';
+        console.log(`[WhatsApp] Mensagem recebida (${type || 'sem tipo'}) de ${from}: ${state.lastInboundPreview}`);
+
         const normalizedMessage = {
           from,
           body,
           caption: body,
-          isGroupMsg: String(from || '').endsWith('@g.us'),
-          fromMe: Boolean(msg.key?.fromMe),
+          isGroupMsg: false,
+          fromMe: false,
           raw: msg
         };
         await handleIncomingMessage(client, normalizedMessage);
@@ -221,7 +275,7 @@ async function startBot(options = {}) {
   state.launchAttempts += 1;
   state.engine = 'baileys';
   console.log('Motor WhatsApp selecionado: baileys-puro-sem-openwa');
-  state.status = 'Iniciando WhatsApp (Baileys)';
+  state.status = 'Iniciando WhatsApp (Baileys puro)';
   state.lastError = null;
 
   if (options.cleanSession || boolEnv('WA_CLEAN_SESSION_ON_START', false)) {
