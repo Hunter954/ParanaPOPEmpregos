@@ -8,14 +8,28 @@
 
 <section class="panel">
   <table>
-    <thead><tr><th>Data</th><th>Contato</th><th>Perfil</th><th>Mensagem</th></tr></thead>
+    <thead><tr><th>Data</th><th>Contato</th><th>Perfil</th><th>Mensagem</th><th>Ações</th></tr></thead>
     <tbody>
       <% notes.forEach(note => { %>
         <tr>
           <td><%= new Date(note.created_at).toLocaleString('pt-BR') %></td>
-          <td><strong><%= note.company_name || note.name || '-' %></strong><br><small><%= note.phone || '-' %></small></td>
+          <td><strong><%= note.company_name || note.name || '-' %></strong><br><small><%= formatPhone(note) %></small></td>
           <td><%= note.role || '-' %></td>
           <td><%= note.note %></td>
+          <td>
+            <% if (note.user_id) { %>
+              <details>
+                <summary>Responder</summary>
+                <form method="post" action="/admin/support/<%= note.user_id %>/reply" class="stacked support-reply-form">
+                  <input type="hidden" name="returnTo" value="/admin/notes">
+                  <textarea name="message" placeholder="Resposta do suporte" required></textarea>
+                  <button>Enviar e manter em suporte</button>
+                </form>
+              </details>
+            <% } else { %>
+              <small class="muted">Usuário removido</small>
+            <% } %>
+          </td>
         </tr>
       <% }) %>
     </tbody>

@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { Boom } = require('@hapi/boom');
 const { handleIncomingMessage } = require('./flows');
+const db = require('./db');
 
 let client = null;
 let starting = false;
@@ -13,6 +14,7 @@ const state = {
   enabled: String(process.env.ENABLE_WHATSAPP || 'true') === 'true',
   sessionId: process.env.WA_SESSION_ID || 'paranapop-empregos',
   engine: 'baileys',
+  authStore: 'local-file',
   ready: false,
   qr: null,
   status: 'Aguardando início manual pelo painel',
@@ -61,6 +63,12 @@ async function cleanSessionArtifacts() {
   const baseDir = sessionBaseDir();
   await removeIfExists(path.join(baseDir, `baileys-${sessionId}`));
   await removeIfExists(path.join(process.cwd(), `baileys-${sessionId}`));
+
+  try {
+    await db.deleteWhatsAppAuthSession(sessionId);
+  } catch (error) {
+    console.warn('Não foi possível limpar a sessão Baileys no PostgreSQL:', error.message);
+  }
 }
 
 function normalizeToBaileysJid(jid) {
@@ -118,6 +126,85 @@ async function stopBot() {
 function getBaileysAuthDir() {
   const baseDir = sessionBaseDir();
   return path.join(baseDir, `baileys-${state.sessionId}`);
+}
+
+
+function authStoreMode() {
+  const mode = String(process.env.WA_AUTH_STORE || process.env.WA_SESSION_STORE || 'postgres').trim().toLowerCase();
+  if (['file', 'files', 'local', 'local-file', 'filesystem'].includes(mode)) return 'file';
+  return 'postgres';
+}
+
+async function usePostgresAuthState(baileys) {
+  const { initAuthCreds, BufferJSON, proto } = baileys;
+  const sessionId = state.sessionId;
+
+  await db.ensureWhatsAppAuthTable();
+
+  const serialize = (data) => JSON.parse(JSON.stringify(data, BufferJSON.replacer));
+  const deserialize = (data) => {
+    if (!data) return null;
+    return JSON.parse(JSON.stringify(data), BufferJSON.reviver);
+  };
+
+  const readData = async (key) => deserialize(await db.readWhatsAppAuthRecord(sessionId, key));
+  const writeData = async (key, data) => db.writeWhatsAppAuthRecord(sessionId, key, serialize(data));
+  const removeData = async (key) => db.deleteWhatsAppAuthRecord(sessionId, key);
+
+  const creds = (await readData('creds')) || initAuthCreds();
+
+  return {
+    state: {
+      creds,
+      keys: {
+        get: async (type, ids) => {
+          const data = {};
+          await Promise.all(ids.map(async (id) => {
+            let value = await readData(`${type}-${id}`);
+            if (type === 'app-state-sync-key' && value && proto?.Message?.AppStateSyncKeyData) {
+              value = proto.Message.AppStateSyncKeyData.fromObject(value);
+            }
+            data[id] = value;
+          }));
+          return data;
+        },
+        set: async (data) => {
+          const tasks = [];
+          for (const category of Object.keys(data || {})) {
+            for (const id of Object.keys(data[category] || {})) {
+              const value = data[category][id];
+              const key = `${category}-${id}`;
+              tasks.push(value ? writeData(key, value) : removeData(key));
+            }
+          }
+          await Promise.all(tasks);
+        }
+      }
+    },
+    saveCreds: async () => writeData('creds', creds)
+  };
+}
+
+async function resolveBaileysAuthState(baileys, authDir) {
+  const { useMultiFileAuthState } = baileys;
+  const mode = authStoreMode();
+
+  if (mode === 'file') {
+    state.authStore = `arquivo local: ${authDir}`;
+    await fs.promises.mkdir(authDir, { recursive: true });
+    return useMultiFileAuthState(authDir);
+  }
+
+  try {
+    const auth = await usePostgresAuthState(baileys);
+    state.authStore = 'PostgreSQL';
+    return auth;
+  } catch (error) {
+    state.authStore = `arquivo local: ${authDir}`;
+    console.warn('Sessão Baileys no PostgreSQL indisponível. Usando arquivo local como fallback:', error.message);
+    await fs.promises.mkdir(authDir, { recursive: true });
+    return useMultiFileAuthState(authDir);
+  }
 }
 
 function unwrapMessageContent(content) {
@@ -178,8 +265,7 @@ async function startBaileys() {
   } = baileys;
 
   const authDir = getBaileysAuthDir();
-  await fs.promises.mkdir(authDir, { recursive: true });
-  const auth = await useMultiFileAuthState(authDir);
+  const auth = await resolveBaileysAuthState(baileys, authDir);
   baileysSaveCreds = auth.saveCreds;
 
   const versionResult = await fetchLatestBaileysVersion().catch(() => ({ version: undefined }));
@@ -334,7 +420,7 @@ async function startBot(options = {}) {
       baileysSocket = null;
       console.error('Erro ao iniciar WhatsApp/Baileys:', error);
 
-      if (boolEnv('WA_RETRY_CLEAN_SESSION', true) && state.launchAttempts < intEnv('WA_MAX_LAUNCH_ATTEMPTS', 2)) {
+      if (boolEnv('WA_RETRY_CLEAN_SESSION', false) && state.launchAttempts < intEnv('WA_MAX_LAUNCH_ATTEMPTS', 2)) {
         state.status = 'Tentando novamente com sessão limpa';
         await cleanSessionArtifacts();
         starting = false;
@@ -369,6 +455,7 @@ function getBotState() {
   return {
     ...state,
     engine: 'baileys',
+    authStore: state.authStore,
     starting,
     qrAvailable: Boolean(state.qr),
     uptimeSeconds: state.startedAt ? Math.round((Date.now() - new Date(state.startedAt).getTime()) / 1000) : 0

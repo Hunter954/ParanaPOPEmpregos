@@ -4,6 +4,7 @@ const { Pool } = require('pg');
 
 let pool = null;
 let poolError = null;
+let whatsappAuthTableReady = false;
 
 function buildConnectionStringFromPgVars() {
   const host = process.env.PGHOST;
@@ -120,7 +121,34 @@ async function runMigrations() {
 
 function jidToPhone(jid) {
   if (!jid) return null;
-  return String(jid).replace(/@.+$/, '').replace(/\D/g, '');
+  const value = String(jid || '').trim();
+
+  // JIDs @lid são IDs privados do WhatsApp/Baileys. Eles não são telefone real.
+  // Antes o sistema removia o @lid e salvava esse número técnico como telefone,
+  // o que deixava o painel administrativo com números inexistentes.
+  if (!/@(s\.whatsapp\.net|c\.us)$/i.test(value)) return null;
+
+  const phone = value.replace(/@.+$/, '').replace(/\D/g, '');
+  if (phone.length < 8 || phone.length > 15) return null;
+  if (/^(\d)\1+$/.test(phone)) return null;
+  return phone;
+}
+
+function formatPhoneForAdmin(userOrPhone) {
+  const raw = typeof userOrPhone === 'object' && userOrPhone !== null ? userOrPhone.phone : userOrPhone;
+  const jid = typeof userOrPhone === 'object' && userOrPhone !== null ? String(userOrPhone.whatsapp_jid || '') : '';
+  const phone = String(raw || '').replace(/\D/g, '');
+
+  if (phone.length >= 12 && phone.startsWith('55')) {
+    const ddd = phone.slice(2, 4);
+    const rest = phone.slice(4);
+    if (rest.length === 9) return `+55 (${ddd}) ${rest.slice(0, 5)}-${rest.slice(5)}`;
+    if (rest.length === 8) return `+55 (${ddd}) ${rest.slice(0, 4)}-${rest.slice(4)}`;
+  }
+
+  if (phone.length >= 8 && phone.length <= 15) return `+${phone}`;
+  if (jid.includes('@lid')) return 'Número oculto pelo WhatsApp (@lid)';
+  return 'Não disponível';
 }
 
 async function getUserByJid(whatsappJid) {
@@ -129,8 +157,17 @@ async function getUserByJid(whatsappJid) {
 }
 
 async function getOrCreateUser(whatsappJid) {
+  const phone = jidToPhone(whatsappJid);
   const existing = await getUserByJid(whatsappJid);
   if (existing) {
+    if (phone && !existing.phone) {
+      const updated = await query(
+        'UPDATE users SET phone = $2, last_interaction_at = NOW(), updated_at = NOW() WHERE id = $1 RETURNING *',
+        [existing.id, phone]
+      );
+      return updated.rows[0];
+    }
+
     await query('UPDATE users SET last_interaction_at = NOW(), updated_at = NOW() WHERE id = $1', [existing.id]);
     return existing;
   }
@@ -139,7 +176,7 @@ async function getOrCreateUser(whatsappJid) {
     `INSERT INTO users (whatsapp_jid, phone, onboarding_step)
      VALUES ($1, $2, 'role_selection')
      RETURNING *`,
-    [whatsappJid, jidToPhone(whatsappJid)]
+    [whatsappJid, phone]
   );
   return result.rows[0];
 }
@@ -362,6 +399,49 @@ async function getDashboardStats() {
   return result.rows[0];
 }
 
+
+async function ensureWhatsAppAuthTable() {
+  if (whatsappAuthTableReady) return;
+  await query(`CREATE TABLE IF NOT EXISTS whatsapp_auth (
+    session_id TEXT NOT NULL,
+    key TEXT NOT NULL,
+    value JSONB NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (session_id, key)
+  )`);
+  whatsappAuthTableReady = true;
+}
+
+async function readWhatsAppAuthRecord(sessionId, key) {
+  await ensureWhatsAppAuthTable();
+  const result = await query(
+    'SELECT value FROM whatsapp_auth WHERE session_id = $1 AND key = $2',
+    [sessionId, key]
+  );
+  return result.rows[0]?.value || null;
+}
+
+async function writeWhatsAppAuthRecord(sessionId, key, value) {
+  await ensureWhatsAppAuthTable();
+  await query(
+    `INSERT INTO whatsapp_auth (session_id, key, value, updated_at)
+     VALUES ($1, $2, $3, NOW())
+     ON CONFLICT (session_id, key)
+     DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
+    [sessionId, key, value]
+  );
+}
+
+async function deleteWhatsAppAuthRecord(sessionId, key) {
+  await ensureWhatsAppAuthTable();
+  await query('DELETE FROM whatsapp_auth WHERE session_id = $1 AND key = $2', [sessionId, key]);
+}
+
+async function deleteWhatsAppAuthSession(sessionId) {
+  await ensureWhatsAppAuthTable();
+  await query('DELETE FROM whatsapp_auth WHERE session_id = $1', [sessionId]);
+}
+
 async function closePool() {
   if (pool) await pool.end();
 }
@@ -374,6 +454,7 @@ module.exports = {
   runMigrations,
   closePool,
   jidToPhone,
+  formatPhoneForAdmin,
   getUserByJid,
   getOrCreateUser,
   updateUser,
@@ -392,5 +473,10 @@ module.exports = {
   deleteUserAccount,
   logMessage,
   addAdminNote,
-  getDashboardStats
+  getDashboardStats,
+  ensureWhatsAppAuthTable,
+  readWhatsAppAuthRecord,
+  writeWhatsAppAuthRecord,
+  deleteWhatsAppAuthRecord,
+  deleteWhatsAppAuthSession
 };

@@ -6,7 +6,8 @@ const {
   updateJobStatus,
   getJobById,
   updateUser,
-  logMessage
+  logMessage,
+  formatPhoneForAdmin
 } = require('../db');
 
 const router = express.Router();
@@ -49,7 +50,7 @@ router.get('/', requireAuth, async (req, res, next) => {
     const bot = getBotState();
     const recentUsers = await query('SELECT * FROM users ORDER BY created_at DESC LIMIT 8');
     const recentJobs = await query('SELECT * FROM jobs ORDER BY created_at DESC LIMIT 8');
-    res.render('admin/dashboard', { stats, bot, recentUsers: recentUsers.rows, recentJobs: recentJobs.rows });
+    res.render('admin/dashboard', { stats, bot, recentUsers: recentUsers.rows, recentJobs: recentJobs.rows, formatPhone: formatPhoneForAdmin });
   } catch (error) {
     next(error);
   }
@@ -89,13 +90,13 @@ router.get('/users', requireAuth, async (req, res, next) => {
     }
     if (q) {
       params.push(`%${q}%`);
-      where.push(`(name ILIKE $${params.length} OR company_name ILIKE $${params.length} OR phone ILIKE $${params.length} OR city ILIKE $${params.length})`);
+      where.push(`(name ILIKE $${params.length} OR company_name ILIKE $${params.length} OR phone ILIKE $${params.length} OR whatsapp_jid ILIKE $${params.length} OR city ILIKE $${params.length})`);
     }
     const result = await query(
       `SELECT * FROM users ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY created_at DESC LIMIT 200`,
       params
     );
-    res.render('admin/users', { users: result.rows, role, q });
+    res.render('admin/users', { users: result.rows, role, q, formatPhone: formatPhoneForAdmin });
   } catch (error) {
     next(error);
   }
@@ -157,7 +158,7 @@ router.get('/jobs', requireAuth, async (req, res, next) => {
        LIMIT 300`,
       params
     );
-    res.render('admin/jobs', { jobs: result.rows, status });
+    res.render('admin/jobs', { jobs: result.rows, status, formatPhone: formatPhoneForAdmin });
   } catch (error) {
     next(error);
   }
@@ -179,14 +180,14 @@ router.post('/jobs/:id/status', requireAuth, async (req, res, next) => {
 router.get('/applications', requireAuth, async (req, res, next) => {
   try {
     const result = await query(
-      `SELECT a.*, j.title AS job_title, j.company_name, u.name AS candidate_name, u.phone, u.city, u.experience
+      `SELECT a.*, j.title AS job_title, j.company_name, u.name AS candidate_name, u.phone, u.whatsapp_jid, u.city, u.experience
        FROM applications a
        JOIN jobs j ON j.id = a.job_id
        JOIN users u ON u.id = a.candidate_user_id
        ORDER BY a.created_at DESC
        LIMIT 300`
     );
-    res.render('admin/applications', { applications: result.rows });
+    res.render('admin/applications', { applications: result.rows, formatPhone: formatPhoneForAdmin });
   } catch (error) {
     next(error);
   }
@@ -229,16 +230,45 @@ router.post('/broadcast', requireAuth, async (req, res, next) => {
   }
 });
 
+
+router.post('/support/:userId/reply', requireAuth, async (req, res, next) => {
+  try {
+    const message = String(req.body.message || '').trim();
+    if (!message) return res.redirect(safeReturn(req.body.returnTo || '/admin/notes'));
+
+    const result = await query('SELECT * FROM users WHERE id = $1', [req.params.userId]);
+    const target = result.rows[0];
+    if (!target?.whatsapp_jid) return res.redirect(safeReturn(req.body.returnTo || '/admin/notes'));
+
+    await sendText(target.whatsapp_jid, message);
+    await logMessage({ userId: target.id, whatsappJid: target.whatsapp_jid, direction: 'out', body: message });
+    await query('INSERT INTO admin_notes (user_id, note) VALUES ($1, $2)', [target.id, `Resposta do suporte: ${message}`]);
+
+    await updateUser(target.id, {
+      onboarding_step: 'support_message',
+      onboarding_data: {
+        ...(target.onboarding_data || {}),
+        support_open: true,
+        support_last_admin_reply_at: new Date().toISOString()
+      }
+    });
+
+    res.redirect(safeReturn(req.body.returnTo || '/admin/notes'));
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.get('/notes', requireAuth, async (req, res, next) => {
   try {
     const result = await query(
-      `SELECT n.*, u.name, u.company_name, u.phone, u.role
+      `SELECT n.*, u.name, u.company_name, u.phone, u.whatsapp_jid, u.role
        FROM admin_notes n
        LEFT JOIN users u ON u.id = n.user_id
        ORDER BY n.created_at DESC
        LIMIT 200`
     );
-    res.render('admin/notes', { notes: result.rows });
+    res.render('admin/notes', { notes: result.rows, formatPhone: formatPhoneForAdmin });
   } catch (error) {
     next(error);
   }

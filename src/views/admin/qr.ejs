@@ -8,8 +8,8 @@
     <form method="post" action="/admin/bot/start">
       <button class="primary">Gerar/Iniciar</button>
     </form>
-    <form method="post" action="/admin/bot/restart-clean" onsubmit="return confirm('Isso limpa a sessão local e gera um novo QR. Continuar?')">
-      <button>Limpar sessão e tentar de novo</button>
+    <form method="post" action="/admin/bot/restart-clean" onsubmit="return confirm('Isso limpa a sessão salva do WhatsApp e gera um novo QR. Continuar?')">
+      <button>Limpar sessão e gerar novo QR</button>
     </form>
     <form method="post" action="/admin/bot/stop">
       <button>Parar</button>
@@ -20,6 +20,7 @@
 <section class="panel centered">
   <div class="status <%= bot.ready ? 'ok' : 'warn' %>"><%= bot.status %></div>
   <p>Motor atual: <strong>Baileys puro</strong></p>
+  <p>Sessão salva em: <strong><%= bot.authStore || 'arquivo local' %></strong></p>
   <p>Tentativas de inicialização: <strong><%= bot.launchAttempts || 0 %></strong></p>
   <% if (bot.lastInboundAt) { %>
     <p>Última mensagem recebida: <strong><%= bot.lastInboundPreview %></strong><br><span class="muted"><%= bot.lastInboundFrom %> em <%= new Date(bot.lastInboundAt).toLocaleString('pt-BR') %></span></p>
@@ -33,7 +34,7 @@
 
   <% if (bot.qr) { %>
     <img class="qr" src="<%= bot.qr %>" alt="QR Code WhatsApp">
-    <p>Depois de ler o QR, mantenha o celular conectado por alguns minutos para salvar a sessão.</p>
+    <p>Depois de ler o QR, mantenha o celular conectado por alguns minutos para salvar a sessão. Nesta versão, a sessão é salva no PostgreSQL por padrão para sobreviver aos redeploys.</p>
   <% } else if (bot.ready) { %>
     <h2>✅ WhatsApp conectado</h2>
     <p>O bot já está pronto para receber mensagens.</p>

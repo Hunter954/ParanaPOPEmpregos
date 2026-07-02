@@ -20,6 +20,7 @@
 <section class="panel">
   <h2>Status do WhatsApp</h2>
   <div class="status <%= bot.ready ? 'ok' : 'warn' %>"><%= bot.status %></div>
+  <p class="muted">Sessão WhatsApp: <strong><%= bot.authStore || 'arquivo local' %></strong></p>
   <% if (bot.lastError) { %><pre class="error"><%= bot.lastError %></pre><% } %>
   <% if (bot.qrAvailable) { %><p>QR Code disponível. <a href="/admin/qr">Abrir leitura</a></p><% } %>
 </section>
@@ -35,7 +36,7 @@
           <td><%= user.name || user.company_name || '-' %></td>
           <td><%= user.role || '-' %></td>
           <td><%= user.city || '-' %></td>
-          <td><%= user.phone || '-' %></td>
+          <td><%= formatPhone(user) %></td>
         </tr>
       <% }) %>
       </tbody>

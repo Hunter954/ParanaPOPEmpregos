@@ -75,3 +75,5 @@ details summary { color: var(--gold); cursor: pointer; margin: .35rem 0; }
 }
 .actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .muted{color:#6b7280;font-size:.95rem}
+.support-reply-form { min-width: 260px; margin-top: .6rem; }
+.support-reply-form textarea { min-height: 90px; }

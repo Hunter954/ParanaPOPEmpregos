@@ -132,6 +132,39 @@ async function handleAccountDeleteConfirmation(client, jid, user, body) {
   await send(client, jid, `✅ Seu cadastro foi excluído do ParanáPOP Empregos.${companyJobsText}\n\nPara começar novamente no futuro, envie *OI*.`, null);
 }
 
+
+function menuForUser(user) {
+  if (user.role === 'candidate') return candidateMenu(user);
+  if (user.role === 'company') return companyMenu(user);
+  return welcomeMessage();
+}
+
+async function sendBackToMenu(client, jid, user, prefix = '') {
+  if (!user.role || user.role === 'support') {
+    const updated = await updateUser(user.id, { role: null, onboarding_step: 'role_selection', onboarding_data: {} });
+    await send(client, jid, `${prefix}${prefix ? '\n\n' : ''}${welcomeMessage()}`, updated.id);
+    return updated;
+  }
+
+  const updated = await clearUserFlow(user.id, `${user.role}_menu`);
+  await send(client, jid, `${prefix}${prefix ? '\n\n' : ''}${menuForUser(updated)}`, updated.id);
+  return updated;
+}
+
+async function startSupportFlow(client, jid, user) {
+  const data = user.onboarding_data || {};
+  const updated = await updateUser(user.id, {
+    onboarding_step: 'support_message',
+    onboarding_data: {
+      ...data,
+      support_open: true,
+      support_opened_at: new Date().toISOString()
+    }
+  });
+  await send(client, jid, supportMenu(), updated.id);
+  return updated;
+}
+
 function candidateIsActive(user) {
   const now = Date.now();
   const trial = user.trial_until ? new Date(user.trial_until).getTime() : 0;
@@ -233,12 +266,7 @@ async function handleIncomingMessage(client, message) {
   }
 
   if (['menu', '/menu', 'voltar'].includes(normalized)) {
-    if (!user.role) {
-      await send(client, jid, welcomeMessage(), user.id);
-      return;
-    }
-    user = await clearUserFlow(user.id, `${user.role}_menu`);
-    await send(client, jid, user.role === 'candidate' ? candidateMenu(user) : user.role === 'company' ? companyMenu(user) : supportMenu(), user.id);
+    await sendBackToMenu(client, jid, user, user.onboarding_step === 'support_message' ? 'Atendimento de suporte encerrado.' : '');
     return;
   }
 
@@ -278,6 +306,11 @@ async function handleIncomingMessage(client, message) {
 
   if (!user.role || user.onboarding_step === 'role_selection') {
     await handleRoleSelection(client, jid, user, body);
+    return;
+  }
+
+  if (user.onboarding_step === 'support_name' || user.onboarding_step === 'support_message') {
+    await handleSupport(client, jid, user, body);
     return;
   }
 
@@ -419,8 +452,7 @@ async function handleCandidate(client, jid, user, body) {
     return;
   }
   if (n === '8') {
-    user = await updateUser(user.id, { onboarding_step: 'support_message' });
-    await send(client, jid, supportMenu(), user.id);
+    await startSupportFlow(client, jid, user);
     return;
   }
   await send(client, jid, candidateMenu(user), user.id);
@@ -596,8 +628,7 @@ async function handleCompany(client, jid, user, body) {
   }
 
   if (n === '7') {
-    user = await updateUser(user.id, { onboarding_step: 'support_message' });
-    await send(client, jid, supportMenu(), user.id);
+    await startSupportFlow(client, jid, user);
     return;
   }
 
@@ -756,13 +787,29 @@ async function handleJobCandidates(client, jid, user, body) {
 
 async function handleSupport(client, jid, user, body) {
   if (user.onboarding_step === 'support_name') {
-    user = await updateUser(user.id, { name: body, onboarding_step: 'support_message' });
+    user = await updateUser(user.id, {
+      name: body,
+      onboarding_step: 'support_message',
+      onboarding_data: {
+        ...(user.onboarding_data || {}),
+        support_open: true,
+        support_opened_at: new Date().toISOString()
+      }
+    });
     await send(client, jid, supportMenu(), user.id);
     return;
   }
 
   await query('INSERT INTO admin_notes (user_id, note) VALUES ($1, $2)', [user.id, `Suporte via WhatsApp: ${body}`]);
-  await send(client, jid, '✅ Recebi sua solicitação. A equipe do ParanáPOP poderá responder por aqui em breve.\n\nPara voltar ao menu, envie *MENU*.', user.id);
+  await updateUser(user.id, {
+    onboarding_step: 'support_message',
+    onboarding_data: {
+      ...(user.onboarding_data || {}),
+      support_open: true,
+      support_last_user_message_at: new Date().toISOString()
+    }
+  });
+  await send(client, jid, '✅ Recebi sua solicitação. A equipe do ParanáPOP poderá responder por aqui em breve.\n\nPara encerrar o atendimento e voltar ao menu, envie *MENU*.', user.id);
 }
 
 module.exports = {

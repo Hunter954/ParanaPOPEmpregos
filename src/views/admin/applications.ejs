@@ -15,7 +15,7 @@
           <td><%= new Date(app.created_at).toLocaleString('pt-BR') %></td>
           <td>#<%= app.job_id %> — <%= app.job_title %></td>
           <td><%= app.company_name || '-' %></td>
-          <td><strong><%= app.candidate_name || '-' %></strong><br><small><%= app.phone || '-' %> • <%= app.city || '-' %></small></td>
+          <td><strong><%= app.candidate_name || '-' %></strong><br><small><%= formatPhone(app) %> • <%= app.city || '-' %></small></td>
           <td><%= app.experience || '-' %></td>
         </tr>
       <% }) %>

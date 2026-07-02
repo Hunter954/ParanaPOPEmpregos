@@ -28,7 +28,7 @@
             <small><%= job.area || '-' %> • <%= job.modality || '-' %> • <%= job.salary || 'A combinar' %></small>
             <details><summary>Detalhes</summary><p><%= job.requirements || '' %></p><p><%= job.benefits || '' %></p><p><%= job.contact_info || '' %></p></details>
           </td>
-          <td><%= job.company_name || '-' %><br><small><%= job.company_phone || '' %></small></td>
+          <td><%= job.company_name || '-' %><br><small><%= formatPhone({ phone: job.company_phone, whatsapp_jid: job.whatsapp_jid }) %></small></td>
           <td><%= job.city || '-' %></td>
           <td><span class="pill"><%= job.status %></span></td>
           <td class="actions">
