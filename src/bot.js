@@ -90,6 +90,45 @@ function previewText(text, size = 100) {
   return value.length > size ? `${value.slice(0, size)}...` : value;
 }
 
+function extractPhoneFromRawMessage(message, fallbackJid = '') {
+  const directPhone = db.jidToPhone(fallbackJid);
+  if (directPhone) return directPhone;
+
+  // Em alguns aparelhos/versões o Baileys recebe o remetente como @lid,
+  // mas mantém o número público em outro campo do payload. Fazemos uma busca
+  // conservadora por JIDs reais do WhatsApp e ignoramos grupos/status/@lid.
+  const seen = new WeakSet();
+  const candidates = [];
+
+  const scan = (value, depth = 0) => {
+    if (depth > 7 || value == null) return;
+
+    if (typeof value === 'string') {
+      if (/(?:@s\.whatsapp\.net|@c\.us)/i.test(value)) {
+        const parts = value.match(/[0-9]+@(?:s\.whatsapp\.net|c\.us)/ig) || [];
+        for (const part of parts) {
+          const phone = db.jidToPhone(part);
+          if (phone) candidates.push(phone);
+        }
+      }
+      return;
+    }
+
+    if (typeof value !== 'object') return;
+    if (seen.has(value)) return;
+    seen.add(value);
+
+    for (const [key, child] of Object.entries(value)) {
+      const keyName = key.toLowerCase();
+      if (['rawdata', 'jpegthumbnail', 'thumbnail', 'fileencsha256', 'filesha256', 'mediaKey'.toLowerCase()].includes(keyName)) continue;
+      scan(child, depth + 1);
+    }
+  };
+
+  scan(message);
+  return candidates[0] || null;
+}
+
 function withTimeout(promise, ms, message) {
   let timer;
   const timeout = new Promise((_, reject) => {
@@ -358,6 +397,7 @@ async function startBaileys() {
         const from = msg.key?.remoteJid;
         const body = getMessageBody(msg);
         const fromMe = Boolean(msg.key?.fromMe);
+        const phone = extractPhoneFromRawMessage(msg, from);
         const isGroup = String(from || '').endsWith('@g.us');
         const isStatus = String(from || '') === 'status@broadcast';
 
@@ -372,6 +412,7 @@ async function startBaileys() {
 
         const normalizedMessage = {
           from,
+          phone,
           body,
           caption: body,
           isGroupMsg: false,

@@ -1,7 +1,7 @@
 {
   "name": "paranapop-empregos-bot",
-  "version": "1.0.8",
-  "description": "Bot WhatsApp ParanáPOP Empregos com Baileys puro, suporte ajustado, sessão Baileys em PostgreSQL e correção de telefones @lid.",
+  "version": "1.0.9",
+  "description": "Bot WhatsApp ParanáPOP Empregos com suporte ajustado, sessão Baileys em PostgreSQL e telefone visível no painel administrativo.",
   "main": "src/server.js",
   "engines": {
     "node": ">=20.0.0"

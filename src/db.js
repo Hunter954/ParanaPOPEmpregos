@@ -119,35 +119,50 @@ async function runMigrations() {
   }
 }
 
+function normalizePhone(value) {
+  if (!value) return null;
+
+  const digits = String(value || '').replace(/\D/g, '');
+  if (!digits) return null;
+
+  // Se a pessoa informou um celular/telefone brasileiro com DDD, salva com 55.
+  // Ex.: (45) 99999-9999 => 5545999999999.
+  const phone = (digits.length === 10 || digits.length === 11) ? `55${digits}` : digits;
+
+  if (phone.length < 8 || phone.length > 15) return null;
+  if (/^(\d)\1+$/.test(phone)) return null;
+
+  // Evita salvar IDs técnicos @lid como se fossem telefone.
+  if (String(value || '').toLowerCase().includes('@lid')) return null;
+
+  return phone;
+}
+
 function jidToPhone(jid) {
   if (!jid) return null;
   const value = String(jid || '').trim();
 
   // JIDs @lid são IDs privados do WhatsApp/Baileys. Eles não são telefone real.
-  // Antes o sistema removia o @lid e salvava esse número técnico como telefone,
-  // o que deixava o painel administrativo com números inexistentes.
+  // Só extraímos telefone quando o JID é o número público do WhatsApp.
   if (!/@(s\.whatsapp\.net|c\.us)$/i.test(value)) return null;
 
-  const phone = value.replace(/@.+$/, '').replace(/\D/g, '');
-  if (phone.length < 8 || phone.length > 15) return null;
-  if (/^(\d)\1+$/.test(phone)) return null;
-  return phone;
+  return normalizePhone(value.replace(/@.+$/, ''));
 }
 
 function formatPhoneForAdmin(userOrPhone) {
   const raw = typeof userOrPhone === 'object' && userOrPhone !== null ? userOrPhone.phone : userOrPhone;
   const jid = typeof userOrPhone === 'object' && userOrPhone !== null ? String(userOrPhone.whatsapp_jid || '') : '';
-  const phone = String(raw || '').replace(/\D/g, '');
+  const phone = normalizePhone(raw);
 
-  if (phone.length >= 12 && phone.startsWith('55')) {
+  if (phone && phone.length >= 12 && phone.startsWith('55')) {
     const ddd = phone.slice(2, 4);
     const rest = phone.slice(4);
     if (rest.length === 9) return `+55 (${ddd}) ${rest.slice(0, 5)}-${rest.slice(5)}`;
     if (rest.length === 8) return `+55 (${ddd}) ${rest.slice(0, 4)}-${rest.slice(4)}`;
   }
 
-  if (phone.length >= 8 && phone.length <= 15) return `+${phone}`;
-  if (jid.includes('@lid')) return 'Número oculto pelo WhatsApp (@lid)';
+  if (phone) return `+${phone}`;
+  if (jid.includes('@lid')) return 'Número ainda não informado';
   return 'Não disponível';
 }
 
@@ -454,6 +469,7 @@ module.exports = {
   runMigrations,
   closePool,
   jidToPhone,
+  normalizePhone,
   formatPhoneForAdmin,
   getUserByJid,
   getOrCreateUser,

@@ -16,6 +16,8 @@ const {
   listApplicationsForJob,
   deleteUserAccount,
   logMessage,
+  normalizePhone,
+  formatPhoneForAdmin,
   query
 } = require('./db');
 const {
@@ -58,6 +60,18 @@ function splitList(text) {
     .map((item) => compact(item))
     .filter(Boolean)
     .slice(0, 8);
+}
+
+function parsePhone(text) {
+  return normalizePhone(text);
+}
+
+function phoneQuestion(label = 'WhatsApp') {
+  return `╭─ 📲 *${label}*\nEnvie o número com DDD para aparecer corretamente no painel administrativo.\n\nEx.: *45 99999-9999*\n╰─ Pode enviar só os números também.`;
+}
+
+function phoneForMessage(user) {
+  return formatPhoneForAdmin(user);
 }
 
 function includesAny(text, words) {
@@ -153,14 +167,21 @@ async function sendBackToMenu(client, jid, user, prefix = '') {
 
 async function startSupportFlow(client, jid, user) {
   const data = user.onboarding_data || {};
+  const nextStep = user.phone ? 'support_message' : 'support_phone';
   const updated = await updateUser(user.id, {
-    onboarding_step: 'support_message',
+    onboarding_step: nextStep,
     onboarding_data: {
       ...data,
       support_open: true,
       support_opened_at: new Date().toISOString()
     }
   });
+
+  if (nextStep === 'support_phone') {
+    await send(client, jid, phoneQuestion('Seu WhatsApp para retorno'), updated.id);
+    return updated;
+  }
+
   await send(client, jid, supportMenu(), updated.id);
   return updated;
 }
@@ -250,6 +271,11 @@ async function handleIncomingMessage(client, message) {
   if (!jid || !body || message.isGroupMsg || message.fromMe) return;
 
   let user = await getOrCreateUser(jid);
+  const inboundPhone = parsePhone(message.phone);
+  if (inboundPhone && user.phone !== inboundPhone) {
+    user = await updateUser(user.id, { phone: inboundPhone });
+  }
+
   await logMessage({ userId: user.id, whatsappJid: jid, direction: 'in', body, raw: message });
 
   const normalized = normalize(body);
@@ -309,7 +335,7 @@ async function handleIncomingMessage(client, message) {
     return;
   }
 
-  if (user.onboarding_step === 'support_name' || user.onboarding_step === 'support_message') {
+  if (['support_name', 'support_phone', 'support_message'].includes(user.onboarding_step)) {
     await handleSupport(client, jid, user, body);
     return;
   }
@@ -366,8 +392,28 @@ async function handleCandidate(client, jid, user, body) {
       await send(client, jid, '╭─ 👤 *Nome completo*\nMe envie seu nome completo para continuar.\n╰─ Ex.: Maria Aparecida Silva', user.id);
       return;
     }
-    user = await updateUser(user.id, { name: body, onboarding_step: 'candidate_city' });
+
+    const nextStep = user.phone ? 'candidate_city' : 'candidate_phone';
+    user = await updateUser(user.id, { name: body, onboarding_step: nextStep });
+
+    if (nextStep === 'candidate_phone') {
+      await send(client, jid, phoneQuestion('Seu WhatsApp'), user.id);
+      return;
+    }
+
     await send(client, jid, `╭─ 📍 *Cidade de busca*\nPrazer, *${body}*!\n\nEm qual cidade você quer buscar vagas?\n╰─ Ex.: Cascavel, Foz do Iguaçu, Curitiba.`, user.id);
+    return;
+  }
+
+  if (user.onboarding_step === 'candidate_phone') {
+    const phone = parsePhone(body);
+    if (!phone) {
+      await send(client, jid, `${phoneQuestion('Seu WhatsApp')}\n\nNão consegui validar esse número. Envie com DDD.`, user.id);
+      return;
+    }
+
+    user = await updateUser(user.id, { phone, onboarding_step: 'candidate_city' });
+    await send(client, jid, `✅ Telefone salvo: *${phoneForMessage(user)}*\n\n╭─ 📍 *Cidade de busca*\nEm qual cidade você quer buscar vagas?\n╰─ Ex.: Cascavel, Foz do Iguaçu, Curitiba.`, user.id);
     return;
   }
 
@@ -434,7 +480,7 @@ async function handleCandidate(client, jid, user, body) {
   }
   if (n === '4') {
     user = await updateUser(user.id, { onboarding_step: 'candidate_edit_choice' });
-    await send(client, jid, `O que você quer editar?\n\n*1* — Nome\n*2* — Cidade\n*3* — Áreas de interesse\n*4* — Modalidade\n*5* — Experiência\n*6* — Preferência de alertas`, user.id);
+    await send(client, jid, `O que você quer editar?\n\n*1* — Nome\n*2* — Cidade\n*3* — Áreas de interesse\n*4* — Modalidade\n*5* — Experiência\n*6* — Preferência de alertas\n*7* — Telefone/WhatsApp`, user.id);
     return;
   }
   if (n === '5') {
@@ -469,10 +515,11 @@ async function handleCandidateEdit(client, jid, user, body) {
       '3': { key: 'area_preferences', question: 'Envie as novas áreas separadas por vírgula, ou *Todas*.' },
       '4': { key: 'modality_preferences', question: 'Envie a modalidade: Presencial, Remoto, Híbrido ou Tanto faz.' },
       '5': { key: 'experience', question: 'Envie o novo resumo de experiência.' },
-      '6': { key: 'receive_mode', question: 'Digite *1* para todas as vagas ou *2* para vagas do perfil.' }
+      '6': { key: 'receive_mode', question: 'Digite *1* para todas as vagas ou *2* para vagas do perfil.' },
+      '7': { key: 'phone', question: phoneQuestion('Novo WhatsApp') }
     };
     if (!map[n]) {
-      await send(client, jid, 'Opção inválida. Envie um número de 1 a 6.', user.id);
+      await send(client, jid, 'Opção inválida. Envie um número de 1 a 7.', user.id);
       return;
     }
     await mergeUserData(user, { editing: map[n].key });
@@ -485,6 +532,13 @@ async function handleCandidateEdit(client, jid, user, body) {
     fields[data.editing] = splitList(body);
   } else if (data.editing === 'receive_mode') {
     fields.receive_mode = n === '1' || includesAny(n, ['todas', 'todos']) ? 'all' : 'profile';
+  } else if (data.editing === 'phone') {
+    const phone = parsePhone(body);
+    if (!phone) {
+      await send(client, jid, `${phoneQuestion('Novo WhatsApp')}\n\nNão consegui validar esse número. Envie com DDD.`, user.id);
+      return;
+    }
+    fields.phone = phone;
   } else {
     fields[data.editing] = body;
   }
@@ -497,6 +551,7 @@ async function sendCandidateProfile(client, jid, user) {
   const text = `╭─ 👤 *Meu perfil*
 Nome: *${user.name || '-'}*
 Cidade: ${user.city || '-'}
+WhatsApp: ${phoneForMessage(user)}
 Áreas: ${(user.area_preferences || []).join(', ') || '-'}
 Modalidade: ${(user.modality_preferences || []).join(', ') || '-'}
 Experiência: ${user.experience || '-'}
@@ -542,7 +597,7 @@ async function applyToJob(client, jid, user, jobId) {
     const company = await query('SELECT * FROM users WHERE id = $1', [job.company_user_id]);
     const companyUser = company.rows[0];
     if (companyUser?.whatsapp_jid) {
-      await send(client, companyUser.whatsapp_jid, `📥 Novo candidato na vaga *#${job.id} — ${job.title}*\n\nNome: ${user.name || '-'}\nCidade: ${user.city || '-'}\nTelefone: ${user.phone || '-'}\nExperiência: ${user.experience || '-'}\n\nNo menu da empresa, envie *5* para ver candidatos de uma vaga.`, companyUser.id);
+      await send(client, companyUser.whatsapp_jid, `📥 Novo candidato na vaga *#${job.id} — ${job.title}*\n\nNome: ${user.name || '-'}\nCidade: ${user.city || '-'}\nTelefone: ${phoneForMessage(user)}\nExperiência: ${user.experience || '-'}\n\nNo menu da empresa, envie *5* para ver candidatos de uma vaga.`, companyUser.id);
     }
   }
 }
@@ -557,8 +612,27 @@ async function handleCompany(client, jid, user, body) {
   }
 
   if (user.onboarding_step === 'company_responsible') {
-    user = await updateUser(user.id, { responsible_name: body, name: body, onboarding_step: 'company_city' });
+    const nextStep = user.phone ? 'company_city' : 'company_phone';
+    user = await updateUser(user.id, { responsible_name: body, name: body, onboarding_step: nextStep });
+
+    if (nextStep === 'company_phone') {
+      await send(client, jid, phoneQuestion('WhatsApp da empresa'), user.id);
+      return;
+    }
+
     await send(client, jid, '╭─ 📍 *Cidade da empresa*\nQual é a cidade principal da empresa?\n╰─ Ex.: Foz do Iguaçu', user.id);
+    return;
+  }
+
+  if (user.onboarding_step === 'company_phone') {
+    const phone = parsePhone(body);
+    if (!phone) {
+      await send(client, jid, `${phoneQuestion('WhatsApp da empresa')}\n\nNão consegui validar esse número. Envie com DDD.`, user.id);
+      return;
+    }
+
+    user = await updateUser(user.id, { phone, onboarding_step: 'company_city' });
+    await send(client, jid, `✅ Telefone salvo: *${phoneForMessage(user)}*\n\n╭─ 📍 *Cidade da empresa*\nQual é a cidade principal da empresa?\n╰─ Ex.: Foz do Iguaçu`, user.id);
     return;
   }
 
@@ -781,22 +855,49 @@ async function handleJobCandidates(client, jid, user, body) {
     return;
   }
 
-  const text = apps.slice(0, 15).map((app, index) => `${index + 1}. *${app.name || 'Sem nome'}*\nCidade: ${app.city || '-'}\nTelefone: ${app.phone || '-'}\nExperiência: ${app.experience || '-'}`).join('\n\n');
+  const text = apps.slice(0, 15).map((app, index) => `${index + 1}. *${app.name || 'Sem nome'}*\nCidade: ${app.city || '-'}\nTelefone: ${phoneForMessage(app)}\nExperiência: ${app.experience || '-'}`).join('\n\n');
   await send(client, jid, `📥 *Candidatos da vaga #${id}*\n\n${text}\n\n${companyMenu(user)}`, user.id);
 }
 
 async function handleSupport(client, jid, user, body) {
   if (user.onboarding_step === 'support_name') {
+    const nextStep = user.phone ? 'support_message' : 'support_phone';
     user = await updateUser(user.id, {
       name: body,
-      onboarding_step: 'support_message',
+      onboarding_step: nextStep,
       onboarding_data: {
         ...(user.onboarding_data || {}),
         support_open: true,
         support_opened_at: new Date().toISOString()
       }
     });
+
+    if (nextStep === 'support_phone') {
+      await send(client, jid, phoneQuestion('Seu WhatsApp para retorno'), user.id);
+      return;
+    }
+
     await send(client, jid, supportMenu(), user.id);
+    return;
+  }
+
+  if (user.onboarding_step === 'support_phone') {
+    const phone = parsePhone(body);
+    if (!phone) {
+      await send(client, jid, `${phoneQuestion('Seu WhatsApp para retorno')}\n\nNão consegui validar esse número. Envie com DDD.`, user.id);
+      return;
+    }
+
+    user = await updateUser(user.id, {
+      phone,
+      onboarding_step: 'support_message',
+      onboarding_data: {
+        ...(user.onboarding_data || {}),
+        support_open: true,
+        support_phone_saved_at: new Date().toISOString()
+      }
+    });
+    await send(client, jid, `✅ Telefone salvo: *${phoneForMessage(user)}*\n\n${supportMenu()}`, user.id);
     return;
   }
 
